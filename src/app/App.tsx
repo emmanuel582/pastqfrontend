@@ -832,15 +832,18 @@ function SnapScreen({
     };
   }, [cameraStream]);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleGallery = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*,application/pdf";
-    input.multiple = true;
-    input.onchange = (e: any) => {
-      if (e.target.files?.length) handleFiles(e.target.files);
-    };
-    input.click();
+    fileInputRef.current?.click();
+  };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      handleFiles(Array.from(e.target.files));
+    }
+    // Clear input so selecting the same file twice works
+    e.target.value = '';
   };
 
   return (
@@ -896,6 +899,14 @@ function SnapScreen({
       </div>
 
       <div className="px-8 pb-12">
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          accept="image/*,application/pdf" 
+          multiple 
+          className="hidden" 
+          onChange={onFileInputChange} 
+        />
         <div className="flex items-center justify-between bg-white p-4 rounded-[32px] shadow-xl shadow-[#EADFD3]/50 border border-[#EADFD3]">
           <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={handleGallery} className="w-14 h-14 rounded-2xl bg-[#F5E8E7] flex flex-col items-center justify-center gap-1">
             <Upload size={20} className="text-[#D45B4F]" />
