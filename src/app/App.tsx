@@ -795,8 +795,11 @@ function SnapScreen({
         }
       }
 
-      // All uploads done — NOW start processing
-      await startVisionSession(session.id);
+      // All image chunks done — NOW start image processing. 
+      // (PDF processing is automatically started on the backend asynchronously).
+      if (rawImages.length > 0) {
+        await startVisionSession(session.id);
+      }
 
       onSessionStarted(session.id);
       nav("processing");
