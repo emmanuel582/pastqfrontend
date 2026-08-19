@@ -728,6 +728,48 @@ function SnapScreen({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Compress a single image file to max 1600px JPEG for fast upload
+  const compressImage = (file: File, maxDim = 1600, quality = 0.75): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      // Skip non-image files
+      if (!file.type.startsWith("image/") && !file.name.match(/\.(heic|heif|jpg|jpeg|png|webp|bmp)$/i)) {
+        return resolve(file);
+      }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(file);
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return resolve(file);
+            const compressed = new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+            console.log(`[compress] ${file.name}: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
+            resolve(compressed);
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file); // fallback: send uncompressed
+      };
+      img.src = url;
+    });
+  };
+
   const confirmUpload = async () => {
     if (!pendingFiles.length || uploading) return;
     const name = materialName.trim() || "New Material";
@@ -735,15 +777,17 @@ function SnapScreen({
     try {
       const session = await createVisionSession({ name, icon: "📖" });
       const pdfs = pendingFiles.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-      const images = sortUploadFiles(
+      const rawImages = sortUploadFiles(
         pendingFiles.filter((f) => !(f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")))
       );
-      if (!pdfs.length && !images.length) throw new Error("No supported files");
+      if (!pdfs.length && !rawImages.length) throw new Error("No supported files");
 
       if (pdfs.length) {
         await uploadSessionPdf(session.id, pdfs[0]);
       }
-      if (images.length) {
+      if (rawImages.length) {
+        // Compress all images in parallel first
+        const images = await Promise.all(rawImages.map((f) => compressImage(f)));
         const chunkSize = 5;
         for (let i = 0; i < images.length; i += chunkSize) {
           await uploadSessionPages(session.id, images.slice(i, i + chunkSize));
