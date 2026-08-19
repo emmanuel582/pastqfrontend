@@ -744,7 +744,7 @@ function SnapScreen({
         await uploadSessionPdf(session.id, pdfs[0]);
       }
       if (images.length) {
-        const chunkSize = 40;
+        const chunkSize = 5;
         for (let i = 0; i < images.length; i += chunkSize) {
           await uploadSessionPages(session.id, images.slice(i, i + chunkSize));
         }
