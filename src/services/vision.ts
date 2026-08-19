@@ -100,6 +100,14 @@ export async function resumeVisionSession(sessionId: string): Promise<VisionSess
   return res.json();
 }
 
+export async function startVisionSession(sessionId: string): Promise<VisionSession> {
+  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/start`), {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to start processing");
+  return res.json();
+}
+
 export async function replyVisionFollowUp(
   sessionId: string,
   opts: {

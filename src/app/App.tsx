@@ -20,6 +20,7 @@ import {
   uploadSessionPdf,
   getVisionSession,
   resumeVisionSession,
+  startVisionSession,
   replyVisionFollowUp,
   sortUploadFiles,
   type VisionSession,
@@ -793,6 +794,9 @@ function SnapScreen({
           await uploadSessionPages(session.id, images.slice(i, i + chunkSize));
         }
       }
+
+      // All uploads done — NOW start processing
+      await startVisionSession(session.id);
 
       onSessionStarted(session.id);
       nav("processing");
