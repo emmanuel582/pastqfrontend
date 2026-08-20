@@ -41,3 +41,5 @@ Authentication → URL Configuration:
 - Redirect URLs include `https://YOUR-FRONTEND.vercel.app/**` and `https://*.vercel.app/**`  
 
 Google provider must stay enabled under Authentication → Providers.
+
+If the browser shows `403` on `/rest/v1/users`, run `supabase/users_rls.sql` in the Supabase SQL Editor.
