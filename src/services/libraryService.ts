@@ -9,18 +9,30 @@ localforage.config({
 
 function normalizeBundle(raw: any) {
   if (!raw || typeof raw !== "object") return null;
+
+  let parsedDesc = null;
+  if (typeof raw.description === "string" && raw.description.startsWith("{")) {
+    try {
+      parsedDesc = JSON.parse(raw.description);
+    } catch (e) {}
+  }
+
   const questions = Array.isArray(raw.questions)
     ? raw.questions
     : Array.isArray(raw.data?.questions)
       ? raw.data.questions
-      : [];
+      : Array.isArray(parsedDesc?.questions)
+        ? parsedDesc.questions
+        : [];
+
   return {
     ...raw,
+    ...parsedDesc,
     id: raw.id || raw.bundle_id || crypto.randomUUID(),
     title: raw.title || raw.name || "Untitled Material",
     icon: raw.icon || "📚",
     questions,
-    groups: raw.groups || [],
+    groups: raw.groups || parsedDesc?.groups || [],
   };
 }
 
