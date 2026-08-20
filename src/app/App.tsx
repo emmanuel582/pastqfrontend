@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
 const Student3DScene = lazy(() => import("./components/Student3D"));
+import MathText from "./components/MathText";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Camera, Upload, Home, Clock, User, ChevronLeft,
@@ -729,10 +730,9 @@ function SnapScreen({
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Compress a single image file to max 1600px JPEG for fast upload
-  const compressImage = (file: File, maxDim = 1600, quality = 0.75): Promise<File> => {
-    return new Promise((resolve, reject) => {
-      // Skip non-image files
+  // High-fidelity image compression (2K resolution, 0.88 quality for razor-sharp math OCR)
+  const compressImage = (file: File, maxDim = 2048, quality = 0.88): Promise<File> => {
+    return new Promise((resolve) => {
       if (!file.type.startsWith("image/") && !file.name.match(/\.(heic|heif|jpg|jpeg|png|webp|bmp)$/i)) {
         return resolve(file);
       }
@@ -751,12 +751,13 @@ function SnapScreen({
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) return resolve(file);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, width, height);
         canvas.toBlob(
           (blob) => {
             if (!blob) return resolve(file);
             const compressed = new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
-            console.log(`[compress] ${file.name}: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
             resolve(compressed);
           },
           "image/jpeg",
@@ -765,7 +766,7 @@ function SnapScreen({
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
-        resolve(file); // fallback: send uncompressed
+        resolve(file);
       };
       img.src = url;
     });
@@ -787,16 +788,22 @@ function SnapScreen({
         await uploadSessionPdf(session.id, pdfs[0]);
       }
       if (rawImages.length) {
-        // Compress all images in parallel first
+        // Compress all images in parallel
         const images = await Promise.all(rawImages.map((f) => compressImage(f)));
-        const chunkSize = 5;
+        const chunkSize = 8;
+        const chunks: File[][] = [];
         for (let i = 0; i < images.length; i += chunkSize) {
-          await uploadSessionPages(session.id, images.slice(i, i + chunkSize));
+          chunks.push(images.slice(i, i + chunkSize));
+        }
+        
+        // Upload chunks with parallel concurrency (up to 3 simultaneous uploads)
+        for (let i = 0; i < chunks.length; i += 3) {
+          const batch = chunks.slice(i, i + 3);
+          await Promise.all(batch.map((chunk) => uploadSessionPages(session.id, chunk)));
         }
       }
 
       // All image chunks done — NOW start image processing. 
-      // (PDF processing is automatically started on the backend asynchronously).
       if (rawImages.length > 0) {
         await startVisionSession(session.id);
       }
@@ -1897,9 +1904,9 @@ function SolvePad({
         </button>
         {qOpen && (
           <div className="px-3 sm:px-4 pb-3 max-h-[32vh] overflow-y-auto">
-            <p className="text-[13px] sm:text-[14px] font-semibold text-[#2E2A27] leading-snug mb-2.5" style={INTER}>
-              {question}
-            </p>
+            <div className="text-[13px] sm:text-[14px] font-semibold text-[#2E2A27] leading-snug mb-2.5" style={INTER}>
+              <MathText text={question} />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {options.map((opt, i) => {
                 const sel = selected === i;
@@ -1916,7 +1923,9 @@ function SolvePad({
                     >
                       {String.fromCharCode(65 + i)}
                     </span>
-                    <span className="text-[12px] sm:text-[13px] text-[#2E2A27] leading-snug" style={INTER}>{opt}</span>
+                    <span className="text-[12px] sm:text-[13px] text-[#2E2A27] leading-snug" style={INTER}>
+                      <MathText text={opt} />
+                    </span>
                   </button>
                 );
               })}
@@ -2411,7 +2420,9 @@ function ExamScreen({
 
       {/* Question + Options */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        <p className="text-[16px] font-semibold text-[#2E2A27] leading-relaxed mb-5" style={INTER}>{q.question}</p>
+        <div className="text-[16px] font-semibold text-[#2E2A27] leading-relaxed mb-5" style={INTER}>
+          <MathText text={q.question} />
+        </div>
         <div className="space-y-2.5">
           {q.options.map((opt, i) => {
             const sel = answers[currentQ] === i;
@@ -2424,7 +2435,9 @@ function ExamScreen({
                   style={{ background: sel ? "#E67468" : "#FAF6F0", color: sel ? "white" : "#8C8681", border: sel ? "none" : "1px solid #EADFD3", ...JK }}>
                   {lbl}
                 </div>
-                <p className="text-[14px] text-[#2E2A27] leading-snug flex-1" style={INTER}>{opt}</p>
+                <div className="text-[14px] text-[#2E2A27] leading-snug flex-1" style={INTER}>
+                  <MathText text={opt} />
+                </div>
                 {sel && (
                   <div className="w-5 h-5 rounded-full bg-[#E67468] flex items-center justify-center flex-shrink-0">
                     <Check size={11} color="white" strokeWidth={3} />
@@ -2656,7 +2669,9 @@ function ReviewAnswersScreen({ questions, answers, nav }: { questions: Q[]; answ
                     <span className="text-[11px] text-[#94A3B8] font-semibold">Q{i + 1}</span>
                     <span className="text-[10px] text-[#8C8681] px-2 py-0.5 bg-[#FAF6F0] rounded-full border border-[#EADFD3]">{q.subject}</span>
                   </div>
-                  <p className="text-[13px] text-[#2E2A27] font-medium leading-snug" style={INTER}>{q.question}</p>
+                  <div className="text-[13px] text-[#2E2A27] font-medium leading-snug" style={INTER}>
+                    <MathText text={q.question} />
+                  </div>
                 </div>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${skipped ? "bg-[#F1F5F9]" : correct ? "bg-[#DCFCE7]" : "bg-[#FEE2E2]"}`}>
                   {skipped ? <span className="text-[10px] text-[#94A3B8] font-bold">–</span>
@@ -2679,7 +2694,9 @@ function ReviewAnswersScreen({ questions, answers, nav }: { questions: Q[]; answ
                         style={{ background: isRight ? "#22C55E" : isUser ? "#EF4444" : "#FAF6F0", color: (isRight || isUser) ? "white" : "#94A3B8", ...JK }}>
                         {String.fromCharCode(65 + j)}
                       </span>
-                      <p className="text-[12px] leading-snug flex-1" style={{ color: fg, ...INTER }}>{opt}</p>
+                      <div className="text-[12px] leading-snug flex-1" style={{ color: fg, ...INTER }}>
+                        <MathText text={opt} />
+                      </div>
                       {isRight && <Check size={12} color="#15803D" strokeWidth={2.5} />}
                       {isUser && !isRight && <X size={12} color="#991B1B" strokeWidth={2.5} />}
                     </div>
