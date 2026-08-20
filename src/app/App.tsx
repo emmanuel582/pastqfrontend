@@ -2726,7 +2726,9 @@ function ReviewAnswersScreen({ questions, answers, nav }: { questions: Q[]; answ
 
               <div className="mx-4 mb-4 p-3 bg-[#FFFBEB] rounded-xl border border-[#FDE68A]">
                 <p className="text-[10px] font-bold text-[#92400E] mb-1 uppercase tracking-wide">Explanation</p>
-                <p className="text-[12px] text-[#78350F] leading-relaxed" style={INTER}>{q.explanation}</p>
+                <p className="text-[12px] text-[#78350F] leading-relaxed" style={INTER}>
+                  <MathText text={q.explanation} />
+                </p>
               </div>
             </div>
           );
