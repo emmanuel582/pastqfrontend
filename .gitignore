@@ -9,3 +9,4 @@ dist-ssr/
 .vscode/
 .idea/
 *.local
+.vercel
