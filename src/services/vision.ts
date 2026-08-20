@@ -108,6 +108,26 @@ export async function startVisionSession(sessionId: string): Promise<VisionSessi
   return res.json();
 }
 
+export async function cancelVisionSession(sessionId: string): Promise<void> {
+  try {
+    await fetch(apiUrl(`/api/vision/sessions/${sessionId}/cancel`), {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error("Failed to cancel session:", err);
+  }
+}
+
+export async function clearAllVisionSessions(): Promise<void> {
+  try {
+    await fetch(apiUrl("/api/vision/sessions"), {
+      method: "DELETE",
+    });
+  } catch (err) {
+    console.error("Failed to clear sessions:", err);
+  }
+}
+
 export async function replyVisionFollowUp(
   sessionId: string,
   opts: {

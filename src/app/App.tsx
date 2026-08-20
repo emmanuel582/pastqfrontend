@@ -22,6 +22,7 @@ import {
   getVisionSession,
   resumeVisionSession,
   startVisionSession,
+  cancelVisionSession,
   replyVisionFollowUp,
   sortUploadFiles,
   type VisionSession,
@@ -1260,6 +1261,17 @@ function ProcessingScreen({
     input.click();
   };
 
+  const handleCancel = async () => {
+    if (!sessionId) {
+      nav("snap");
+      return;
+    }
+    if (window.confirm("Are you sure you want to cancel this extraction?")) {
+      await cancelVisionSession(sessionId);
+      nav("snap");
+    }
+  };
+
   const handleResume = async () => {
     if (!sessionId) return;
     try {
@@ -1387,6 +1399,14 @@ function ProcessingScreen({
             Continue with {(session!.questions || []).length} questions
           </button>
         )}
+
+        <button
+          onClick={handleCancel}
+          className="mb-4 px-4 py-1.5 rounded-xl text-[12px] font-medium text-[#8C8681] hover:text-[#E67468] hover:bg-[#FBEAE8] transition-colors"
+          style={INTER}
+        >
+          ✕ Cancel extraction
+        </button>
 
         <motion.div key={"f" + phase} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center mb-5">
           <p className="text-[11px] font-semibold text-[#E67468] uppercase tracking-widest mb-1" style={JK}>Did you know?</p>
