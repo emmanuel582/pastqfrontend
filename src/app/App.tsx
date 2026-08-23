@@ -12,7 +12,9 @@ import {
 import { listenToAuth, registerUser, loginUser, logoutUser, loginWithGoogle } from "../services/auth";
 
 import { getUserHistory, saveExamSession, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
-import { getOfflineLibrary, getGlobalLibrary, downloadBundle, saveBundle, getOfflineBundle } from "../services/libraryService";
+import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
+import { CatalogBrowser } from "./components/library/CatalogBrowser";
+import { CustomizeCbtScreen } from "./components/cbt/CustomizeCbtScreen";
 import { supabase } from "../services/supabase";
 import { apiUrl } from "../services/api";
 import {
@@ -32,7 +34,7 @@ import {
 type Screen =
   | "splash" | "signup" | "login" | "forgot-password"
   | "onboard-name" | "onboard-1" | "onboard-2" | "onboard-3" | "onboard-4" | "onboard-5"
-  | "home" | "snap" | "processing" | "review-questions"
+  | "home" | "snap" | "processing" | "review-questions" | "customize-cbt"
   | "exam" | "results" | "review-answers" | "preference" | "manual-entry"
   | "profile-edit" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
 type NavTab = "home" | "library" | "lead" | "preference";
@@ -549,20 +551,24 @@ function LibraryTab({
   nav,
   globalLibrary,
   offlineLibrary,
+  libraryCatalog,
   onOpenBundle,
   onDownloadBundle,
+  onSelectManufacturer,
 }: {
   nav: (s: Screen) => void;
   globalLibrary: any[];
   offlineLibrary: any[];
+  libraryCatalog: LibraryCatalog | null;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
+  onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
 }) {
-  const [tab, setTab] = useState<"our" | "downloaded">("our");
+  const [tab, setTab] = useState<"browse" | "flat" | "downloaded">("browse");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const activeList = tab === "our" ? globalLibrary : offlineLibrary;
+  const activeList = tab === "downloaded" ? offlineLibrary : globalLibrary;
 
   const filteredItems = activeList.filter((item: any) => {
     const title = (item.title || item.name || "").toLowerCase();
@@ -589,18 +595,26 @@ function LibraryTab({
           />
         </div>
 
-        <div className="flex gap-6">
+        <div className="flex gap-4 overflow-x-auto">
           <button
-            onClick={() => setTab("our")}
-            className={`pb-3 text-[14px] font-semibold transition-all relative ${tab === "our" ? "text-[#E67468]" : "text-[#8C8681]"}`}
+            onClick={() => setTab("browse")}
+            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "browse" ? "text-[#E67468]" : "text-[#8C8681]"}`}
             style={JK}
           >
-            Our Library
-            {tab === "our" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
+            Browse
+            {tab === "browse" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
+          </button>
+          <button
+            onClick={() => setTab("flat")}
+            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "flat" ? "text-[#E67468]" : "text-[#8C8681]"}`}
+            style={JK}
+          >
+            All Bundles
+            {tab === "flat" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
           </button>
           <button
             onClick={() => setTab("downloaded")}
-            className={`pb-3 text-[14px] font-semibold transition-all relative ${tab === "downloaded" ? "text-[#E67468]" : "text-[#8C8681]"}`}
+            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "downloaded" ? "text-[#E67468]" : "text-[#8C8681]"}`}
             style={JK}
           >
             Downloaded
@@ -609,8 +623,14 @@ function LibraryTab({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {filteredItems.length === 0 ? (
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {tab === "browse" ? (
+          <CatalogBrowser
+            catalog={libraryCatalog || { universities: [] }}
+            onSelectManufacturer={onSelectManufacturer}
+            onFlatBrowse={() => setTab("flat")}
+          />
+        ) : filteredItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-10">
             <div className="w-16 h-16 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-3">
               <Library size={24} color="#94A3B8" />
@@ -683,8 +703,10 @@ function HomeScreen({
   sessions,
   offlineLibrary,
   globalLibrary,
+  libraryCatalog,
   onOpenBundle,
   onDownloadBundle,
+  onSelectManufacturer,
 }: {
   nav: (s: Screen) => void;
   tab: NavTab;
@@ -693,8 +715,10 @@ function HomeScreen({
   sessions: any[];
   offlineLibrary: any[];
   globalLibrary: any[];
+  libraryCatalog: LibraryCatalog | null;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
+  onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
 }) {
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0]">
@@ -705,8 +729,10 @@ function HomeScreen({
             nav={nav}
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
+            libraryCatalog={libraryCatalog}
             onOpenBundle={onOpenBundle}
             onDownloadBundle={onDownloadBundle}
+            onSelectManufacturer={onSelectManufacturer}
           />
         )}
         {tab === "lead" && <HistoryTab nav={nav} sessions={sessions} />}
@@ -3494,6 +3520,50 @@ export default function App() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [offlineLibrary, setOfflineLibrary] = useState<any[]>([]);
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
+  const [libraryCatalog, setLibraryCatalog] = useState<LibraryCatalog | null>(null);
+  const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
+
+  const refreshGlobalLibrary = async () => {
+    try {
+      const [globalLib, catalog] = await Promise.all([
+        getGlobalLibrary(),
+        getGlobalCatalog(),
+      ]);
+      setGlobalLibrary(globalLib || []);
+      setLibraryCatalog(catalog);
+    } catch (e) {
+      console.warn("Library refresh failed", e);
+    }
+  };
+
+  const handleSelectManufacturer = async (
+    mfg: CatalogManufacturer,
+    exam: CatalogExamType,
+    uni: CatalogUniversity
+  ) => {
+    try {
+      let bundle = await getOfflineBundle(mfg.bundleId);
+      if (!bundle?.questions?.length) {
+        bundle = await getBundleFromApi(mfg.bundleId);
+        await saveBundle(bundle);
+        await refreshOfflineLibrary();
+      }
+      if (!bundle?.questions?.length) {
+        alert("This manufacturer bundle has no questions yet.");
+        return;
+      }
+      setCustomizeBundle({
+        ...bundle,
+        examType: bundle.examType || exam.name,
+        university: bundle.university || uni.name,
+        manufacturer: bundle.manufacturer || mfg.name,
+      });
+      setScreen("customize-cbt");
+    } catch (e) {
+      console.error(e);
+      alert("Could not load this manufacturer's questions. Check your connection.");
+    }
+  };
 
   const loadQuestions = (qs: Q[], nextScreen: Screen = "exam") => {
     if (!Array.isArray(qs) || qs.length === 0) {
@@ -3525,6 +3595,14 @@ export default function App() {
         alert("This download has no saved questions yet. Re-extract or re-download it.");
         return;
       }
+      if (fresh.manufacturer || fresh.university || fresh.examType) {
+        setCustomizeBundle({
+          ...fresh,
+          questions: qs,
+        });
+        setScreen("customize-cbt");
+        return;
+      }
       loadQuestions(qs as Q[], "review-questions");
     } catch (e) {
       console.error(e);
@@ -3542,6 +3620,10 @@ export default function App() {
       alert("Download failed. Check your connection.");
     }
   };
+
+  useEffect(() => {
+    refreshGlobalLibrary().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unsub = listenToAuth(async (user) => {
@@ -3572,15 +3654,15 @@ export default function App() {
           const lib = await getOfflineLibrary();
           setOfflineLibrary(lib || []);
         } catch {}
-        // Fetch global library from Supabase (silently fail if table missing)
+        // Fetch global library from VPS API (Supabase fallback in libraryService)
         try {
-          const globalLib = await getGlobalLibrary();
-          setGlobalLibrary(globalLib || []);
+          await refreshGlobalLibrary();
         } catch {}
       } else {
         setSessions([]);
         setOfflineLibrary([]);
         setGlobalLibrary([]);
+        setLibraryCatalog(null);
         setUserName("");
         setUserEmail("");
         setUserAvatar("");
@@ -3666,8 +3748,10 @@ export default function App() {
           sessions={sessions}
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
+          libraryCatalog={libraryCatalog}
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
+          onSelectManufacturer={handleSelectManufacturer}
         />
       );
       case "snap": return <SnapScreen nav={nav} onSessionStarted={(id) => setVisionSessionId(id)} />;
@@ -3678,6 +3762,7 @@ export default function App() {
           sessionId={visionSessionId}
           onQuestionsReady={async (qs) => {
             await refreshOfflineLibrary();
+            await refreshGlobalLibrary();
             loadQuestions(qs as Q[], "review-questions");
           }}
         />
@@ -3699,6 +3784,27 @@ export default function App() {
           }}
         />
       );
+      case "customize-cbt": return customizeBundle ? (
+        <CustomizeCbtScreen
+          bundle={customizeBundle}
+          onBack={() => {
+            setCustomizeBundle(null);
+            nav("home");
+            setNavTab("library");
+          }}
+          onProceed={({ questions, durationSeconds }) => {
+            const ordered = sortQuestions(questions as Q[]);
+            setActiveQuestions(ordered);
+            setAnswers(Array(ordered.length).fill(null));
+            setFlagged(Array(ordered.length).fill(false));
+            setCurrentQ(0);
+            setExamDuration(durationSeconds);
+            setTimeLeft(durationSeconds);
+            setCustomizeBundle(null);
+            nav("exam");
+          }}
+        />
+      ) : null;
       case "exam": return (
         <ExamScreen
           questions={activeQuestions}
