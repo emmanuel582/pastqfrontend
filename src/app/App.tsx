@@ -2750,11 +2750,23 @@ function ReviewAnswersScreen({ questions, answers, nav }: { questions: Q[]; answ
                 })}
               </div>
 
-              <div className="mx-4 mb-4 p-3 bg-[#FFFBEB] rounded-xl border border-[#FDE68A]">
-                <p className="text-[10px] font-bold text-[#92400E] mb-1 uppercase tracking-wide">Explanation</p>
-                <p className="text-[12px] text-[#78350F] leading-relaxed" style={INTER}>
-                  <MathText text={q.explanation} />
+              <div className="mx-4 mb-4 p-3 rounded-xl border" style={{
+                background: q.explanation ? "#FFFBEB" : "#F8FAFC",
+                borderColor: q.explanation ? "#FDE68A" : "#E2E8F0"
+              }}>
+                <p className="text-[10px] font-bold mb-1 uppercase tracking-wide" style={{
+                  color: q.explanation ? "#92400E" : "#64748B"
+                }}>Explanation</p>
+                <p className="text-[12px] leading-relaxed" style={{
+                  color: q.explanation ? "#78350F" : "#94A3B8", ...INTER
+                }}>
+                  {q.explanation ? <MathText text={q.explanation} /> : "No explanation provided for this question."}
                 </p>
+                {q.correct == null && (
+                  <p className="text-[11px] text-[#EF4444] font-medium mt-2">
+                    * The correct answer for this question was not provided in the source material.
+                  </p>
+                )}
               </div>
             </div>
           );
