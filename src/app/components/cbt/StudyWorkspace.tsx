@@ -26,14 +26,10 @@ function Dialog({ title, children, onClose, drawer = false }: { title: string; c
   </dialog>;
 }
 
-function Feedback({ question, selected }: { question: StudyQuestion; selected: number | null }) {
-  const correct = answerIndex(question);
+function Feedback({ question }: { question: StudyQuestion }) {
+  if (!question.explanation) return null;
   return <section className="answer-feedback" aria-label="Answer explanation">
-    <div className="feedback-title"><BookOpen size={18} /><strong>{correct === null ? 'Answer key unavailable' : selected === null ? 'You left this unanswered' : selected === correct ? 'You got it' : 'A little more practice'}</strong></div>
-    {correct !== null && <p>Correct answer: <strong>{String.fromCharCode(65 + correct)}. <MathText text={question.options[correct]} /></strong></p>}
-    {correct === null && <p>This question is excluded from your score.</p>}
-    {question.answerText && <MathText text={question.answerText} />}
-    {question.explanation && <div className="feedback-explanation"><MathText text={question.explanation} /></div>}
+    <div className="feedback-explanation"><MathText text={question.explanation} /></div>
   </section>;
 }
 
@@ -137,7 +133,7 @@ function DrawingBoard({ question, onClose, hidden }: { question: number; onClose
   </section>;
 }
 
-export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, currentQ, onQ, timeLeft, duration, showModal, onModal, onSubmit, nav, practice = false, review = false }: {
+export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, currentQ, onQ, timeLeft, duration, showModal, onModal, onSubmit, nav, review = false }: {
   questions: StudyQuestion[]; answers: (number | null)[]; onAnswer: (question: number, option: number) => void;
   flagged: boolean[]; onFlag: (question: number) => void; currentQ: number; onQ: (question: number) => void;
   timeLeft: number; duration: number; showModal: boolean; onModal: (open: boolean) => void; onSubmit: () => void;
@@ -155,7 +151,7 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
   const question = questions[currentQ];
   const selected = answers[currentQ] ?? null;
   const summary = sessionSummary(questions, answers);
-  const reveal = review || (practice && selected !== null);
+  const reveal = review;
   const key = question ? answerIndex(question) : null;
   function go(index: number) { onQ(Math.max(0, Math.min(index, questions.length - 1))); }
   useEffect(() => {
@@ -177,8 +173,8 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
       <div className="question-column"><div className="question-scroll" ref={questionScroll}><article className="question-paper"><div className="question-meta"><span>QUESTION {String(currentQ + 1).padStart(2, '0')} <small>/ {questions.length}</small></span><div className="question-controls"><button className="icon-button" aria-label="Decrease question text" disabled={scale <= .9} onClick={() => setScale(v => Math.max(.9, v - .1))}><Minus size={15} /><span>A</span></button><button className="icon-button" aria-label="Increase question text" disabled={scale >= 1.4} onClick={() => setScale(v => Math.min(1.4, v + .1))}><Plus size={15} /><span>A</span></button>{!review && <button className={`icon-button flag-button ${flagged[currentQ] ? 'active' : ''}`} aria-label={flagged[currentQ] ? 'Unflag question' : 'Flag question'} aria-pressed={flagged[currentQ]} onClick={() => onFlag(currentQ)}><Flag size={18} /></button>}</div></div>
       <QuestionMedia passage={question.passage} figures={question.figures} />
       <h1 className="question-stem"><MathText text={question.question} /></h1>
-      <div className="answer-options" role="group" aria-label="Answer choices">{question.options.map((option, i) => <button key={i} disabled={reveal} aria-pressed={selected === i} className={`answer-option ${selected === i ? 'selected' : ''} ${reveal && key === i ? 'correct-answer' : ''} ${reveal && selected === i && key !== null && key !== i ? 'incorrect-answer' : ''}`} onClick={() => onAnswer(currentQ, i)}><span className="answer-letter">{String.fromCharCode(65 + i)}</span><span className="answer-word"><MathText text={option} /></span>{reveal && key === i ? <Check size={19} /> : reveal && selected === i && key !== null ? <X size={18} /> : selected === i ? <span className="selection-mark" /> : null}{reveal && <span className="answer-state">{key === i ? 'Correct' : selected === i ? 'Your answer' : ''}</span>}</button>)}</div>
-      {reveal && <Feedback question={question} selected={selected} />}
+      <div className="answer-options" role="group" aria-label="Answer choices">{question.options.map((option, i) => <button key={i} disabled={reveal} aria-pressed={selected === i} className={`answer-option ${selected === i ? 'selected' : ''} ${reveal && key === i ? 'correct-answer' : ''} ${reveal && selected === i && key !== null && key !== i ? 'incorrect-answer' : ''}`} onClick={() => onAnswer(currentQ, i)}><span className="answer-letter">{String.fromCharCode(65 + i)}</span><span className="answer-word"><MathText text={option} /></span>{reveal && key === i ? <Check size={19} /> : reveal && selected === i && key !== null ? <X size={18} /> : selected === i ? <span className="selection-mark" /> : null}{reveal && <span className="answer-state">{selected === i ? 'Your answer' : ''}</span>}</button>)}</div>
+      {reveal && <Feedback question={question} />}
       </article></div><footer className="exam-footer"><button className="study-secondary" aria-label="Previous" disabled={currentQ === 0} onClick={() => go(currentQ - 1)}><ArrowLeft size={18} /><span>Previous</span></button><button className="mobile-question-jump" aria-label="Open question navigator" onClick={() => setNavigator(true)}><Grid2X2 size={18} />{currentQ + 1}/{questions.length}</button><button className="study-primary" onClick={() => currentQ < questions.length - 1 ? go(currentQ + 1) : review ? nav('results') : onModal(true)}>{currentQ === questions.length - 1 ? review ? 'Results' : 'Finish exam' : 'Next'}<ArrowRight size={18} /></button></footer></div>
       {board && <><div className="board-divider" role="separator" aria-label="Resize working paper" aria-orientation={window.innerWidth <= 760 ? "horizontal" : "vertical"} aria-valuenow={window.innerWidth <= 760 ? boardHeight : boardWidth} aria-valuemin={window.innerWidth <= 760 ? 150 : 280} aria-valuemax={window.innerWidth <= 760 ? Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300)) : window.innerWidth * .5} tabIndex={0} onPointerDown={e => { const mobile = window.matchMedia('(max-width: 760px)').matches; divider.current = { start: mobile ? e.clientY : e.clientX, dimension: mobile ? boardHeight : boardWidth, mobile }; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={e => { const d = divider.current; if (!d) return; if (d.mobile) setBoardHeight(Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300, d.dimension + d.start - e.clientY))); else setBoardWidth(Math.max(280, Math.min(window.innerWidth * .5, d.dimension + d.start - e.clientX))); }} onPointerUp={() => { divider.current = null; }} onPointerCancel={() => { divider.current = null; }} onKeyDown={e => { if (!e.key.startsWith('Arrow')) return; e.preventDefault(); if (window.innerWidth <= 760) setBoardHeight(v => Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300, v + (e.key === 'ArrowUp' ? 20 : -20)))); else setBoardWidth(v => Math.max(280, Math.min(window.innerWidth * .5, v + (e.key === 'ArrowLeft' ? 20 : -20)))); }}><span /></div></>}<DrawingBoard question={currentQ} onClose={() => setBoard(false)} hidden={!board} />
     </div>
