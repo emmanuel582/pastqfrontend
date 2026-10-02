@@ -67,6 +67,13 @@ export const logoutUser = async () => {
   await supabase.auth.signOut();
 };
 
+export const sendPasswordReset = async (email: string) => {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/`,
+  });
+  if (error) throw error;
+};
+
 export const listenToAuth = (callback: (user: any) => void) => {
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     callback(session?.user || null);

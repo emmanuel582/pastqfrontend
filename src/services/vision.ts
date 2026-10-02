@@ -1,4 +1,15 @@
 import { apiUrl } from "./api";
+import { supabase } from "./supabase";
+
+async function authenticatedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Please sign in again before using extraction.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${data.session.access_token}`);
+  return fetch(apiUrl(path), { ...init, headers });
+}
 
 export type VisionFollowUp = {
   id: string;
@@ -44,6 +55,12 @@ export type VisionSession = {
     retryCount?: number;
     pageType?: string | null;
     error?: string | null;
+    imageQuality?: {
+      score?: number;
+      reasons?: string[];
+      ocrAgreement?: number;
+      requiresHumanReview?: boolean;
+    } | null;
   }>;
   cost?: Record<string, number>;
 };
@@ -53,7 +70,7 @@ export async function createVisionSession(payload: {
   icon?: string;
   subjectHint?: string;
 }): Promise<VisionSession> {
-  const res = await fetch(apiUrl("/api/vision/sessions"), {
+  const res = await authenticatedFetch("/api/vision/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -65,35 +82,59 @@ export async function createVisionSession(payload: {
   return res.json();
 }
 
-export async function uploadSessionPages(sessionId: string, files: File[]): Promise<VisionSession> {
+export async function uploadSessionPages(sessionId: string, files: File[], startIndex = 0): Promise<VisionSession> {
   const form = new FormData();
   for (const f of files) form.append("images", f);
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/pages`), {
+  form.append("pageIndexes", JSON.stringify(files.map((_, index) => startIndex + index)));
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}/pages`, {
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to upload pages");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message || body?.error || `Failed to upload pages (${res.status})`);
+  }
   return res.json();
 }
 
 export async function uploadSessionPdf(sessionId: string, file: File): Promise<void> {
   const form = new FormData();
   form.append("pdf", file);
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/pdf`), {
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}/pdf`, {
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to upload PDF");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message || body?.error || `Failed to upload PDF (${res.status})`);
+  }
+}
+
+export async function extractVisionText(payload: {
+  text: string;
+  name?: string;
+  icon?: string;
+}): Promise<{ sessionId?: string; jobId?: string; status: string }> {
+  const res = await authenticatedFetch('/api/vision/extract-text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message || body?.error || `Failed to process text (${res.status})`);
+  }
+  return res.json();
 }
 
 export async function getVisionSession(sessionId: string): Promise<VisionSession> {
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}`));
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}`);
   if (!res.ok) throw new Error("Session not found");
   return res.json();
 }
 
 export async function resumeVisionSession(sessionId: string): Promise<VisionSession> {
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/resume`), {
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}/resume`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to resume");
@@ -101,7 +142,7 @@ export async function resumeVisionSession(sessionId: string): Promise<VisionSess
 }
 
 export async function startVisionSession(sessionId: string): Promise<VisionSession> {
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/start`), {
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}/start`, {
     method: "POST",
   });
   if (!res.ok) throw new Error("Failed to start processing");
@@ -110,7 +151,7 @@ export async function startVisionSession(sessionId: string): Promise<VisionSessi
 
 export async function cancelVisionSession(sessionId: string): Promise<void> {
   try {
-    await fetch(apiUrl(`/api/vision/sessions/${sessionId}/cancel`), {
+    await authenticatedFetch(`/api/vision/sessions/${sessionId}/cancel`, {
       method: "POST",
     });
   } catch (err) {
@@ -120,7 +161,7 @@ export async function cancelVisionSession(sessionId: string): Promise<void> {
 
 export async function clearAllVisionSessions(): Promise<void> {
   try {
-    await fetch(apiUrl("/api/vision/sessions"), {
+    await authenticatedFetch("/api/vision/sessions", {
       method: "DELETE",
     });
   } catch (err) {
@@ -147,7 +188,7 @@ export async function replyVisionFollowUp(
   if (opts.paper) form.append("paper", opts.paper);
   if (opts.image) form.append("image", opts.image);
 
-  const res = await fetch(apiUrl(`/api/vision/sessions/${sessionId}/reply`), {
+  const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}/reply`, {
     method: "POST",
     body: form,
   });

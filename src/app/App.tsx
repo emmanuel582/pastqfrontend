@@ -1,26 +1,34 @@
-import { useState, useEffect, useRef, lazy, Suspense, type PointerEvent as ReactPointerEvent } from "react";
-const Student3DScene = lazy(() => import("./components/Student3D"));
+import React, { useState, useEffect, useRef } from "react";
 import MathText from "./components/MathText";
+import { useAppNavigation } from "./useAppNavigation";
+import { AuthScreen } from "./components/auth/AuthScreen";
+import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
+import HiroseLoadingPet, { type HiroseState } from "./components/HiroseLoadingPet";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Camera, Upload, Home, Clock, User, ChevronLeft,
+  Camera, Upload, Home, Clock, User,
   Flag, Check, X, Eye, RotateCcw, Edit2,
   Bell, LogOut, AlertTriangle, BookOpen,
   ChevronRight, Plus, FileText, Shield, Star, Info, Twitter, Github, Library, Search, Download,
   Calculator, PenLine, Eraser, Trash2, Undo2, Send, ZoomIn, ZoomOut, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { listenToAuth, registerUser, loginUser, logoutUser, loginWithGoogle } from "../services/auth";
+import { listenToAuth, logoutUser } from "../services/auth";
 
-import { getUserHistory, saveExamSession, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
+import { getUserHistory, saveExamSession, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
 import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
-import { CatalogBrowser } from "./components/library/CatalogBrowser";
+import { StudyHome, StudyLibrary, StudyWelcome, StudyProgress } from "./components/library/StudyLibrary";
+import { StudyWorkspace, StudyResults } from "./components/cbt/StudyWorkspace";
+import { answerIndex } from "../utils/examSession";
+import { readTheme, applyTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
 import { CustomizeCbtScreen } from "./components/cbt/CustomizeCbtScreen";
+import { isCbtQuestion, customDurationSeconds } from "../utils/cbtFilters";
 import { supabase } from "../services/supabase";
-import { apiUrl } from "../services/api";
+import { rankRecommendationCandidates, recordAnonymousAttemptSummary } from "../services/recommendations";
 import {
   createVisionSession,
   uploadSessionPages,
   uploadSessionPdf,
+  extractVisionText,
   getVisionSession,
   resumeVisionSession,
   startVisionSession,
@@ -41,6 +49,7 @@ type NavTab = "home" | "library" | "lead" | "preference";
 
 interface Q {
   id: number;
+  practiceKey?: string;
   subject: string;
   question: string;
   options: string[];
@@ -57,6 +66,15 @@ interface Q {
   sourceType?: string;
   confidence?: number;
   needsReview?: boolean;
+  incomplete?: boolean;
+  reviewReasons?: string[];
+  qualityFlags?: string[];
+  sectionId?: string | null;
+  section?: string | null;
+  topic?: string | null;
+  passage?: string | null;
+  figures?: QuestionFigure[];
+  answerText?: string | null;
 }
 
 /** Keep CBT / review order: page → printed number → extraction sequence. */
@@ -76,10 +94,26 @@ function sortQuestions(qs: Q[]): Q[] {
   return list.map((q, i) => ({ ...q, id: i + 1, orderIndex: i + 1 }));
 }
 
+function practiceQuestionKey(sourceBundleId: string, question: Q, order: number): string {
+  if (question.practiceKey) return question.practiceKey;
+  // This is a Hostinger content reference only; it intentionally contains no
+  // question wording, option, answer, explanation, image, or OCR payload.
+  return [
+    sourceBundleId,
+    question.sourceType || "question",
+    question.year || "-",
+    question.paper || "-",
+    question.pageIndex ?? "-",
+    question.questionNumber ?? question.id,
+    order,
+  ].join(":");
+}
+
 const DEMO_QUESTIONS: Q[] = [
   {
     id: 1,
     subject: "Use of English",
+    topic: "Vocabulary",
     question: "Choose the word that is nearest in meaning to the italicized word: The man's *audacity* was quite surprising.",
     options: ["boldness", "foolishness", "cowardice", "cleverness"],
     correct: 0,
@@ -88,6 +122,7 @@ const DEMO_QUESTIONS: Q[] = [
   {
     id: 2,
     subject: "Mathematics",
+    topic: "Linear equations",
     question: "If 2x + 3 = 11, what is the value of x?",
     options: ["2", "3", "4", "5"],
     correct: 2,
@@ -96,6 +131,7 @@ const DEMO_QUESTIONS: Q[] = [
   {
     id: 3,
     subject: "Physics",
+    topic: "Scalars and vectors",
     question: "Which of the following is a scalar quantity?",
     options: ["Velocity", "Force", "Speed", "Acceleration"],
     correct: 2,
@@ -120,63 +156,41 @@ const JK = { fontFamily: "'Lora', sans-serif" };
 const MONO = { fontFamily: "'JetBrains Mono', monospace" };
 const INTER = { fontFamily: "'Outfit', sans-serif" };
 
+const HIROSE_PROCESSING_PHASES: Array<{ state: HiroseState; text: string; sub: string }> = [
+  { state: "idle", text: "Preparing your paper", sub: "Getting each page ready for inspection" },
+  { state: "review", text: "Scanning your paper", sub: "Identifying text regions" },
+  { state: "review", text: "Reading every page", sub: "OCR is preserving questions and options" },
+  { state: "running", text: "Extracting questions", sub: "Grouping by year & paper" },
+  { state: "run-right", text: "Structuring into CBT format", sub: "Stitching continued pages" },
+  { state: "run-left", text: "Cross-checking the paper", sub: "Comparing answer choices and page order" },
+  { state: "waiting", text: "Checking patterns", sub: "Looking for missing pages" },
+  { state: "waving", text: "Finishing the review", sub: "Confirming your practice set is coherent" },
+  { state: "jumping", text: "Almost there!", sub: "Polishing your question bank" },
+];
+
 // ── Shared Components ─────────────────────────────────────────────────────────
 
 function BottomNav({ tab, onTab, onSnap }: { tab: NavTab; onTab: (t: NavTab) => void; onSnap: () => void }) {
   const items: { id: NavTab; label: string; Icon: React.ElementType }[] = [
-    { id: "home", label: "Home", Icon: Home },
-    { id: "library", label: "Library", Icon: Library },
-    { id: "lead", label: "Lead", Icon: Clock }, // Placeholder icon for streak
-    { id: "preference", label: "Preference", Icon: User },
+    { id: "home", label: "Home", Icon: Home }, { id: "library", label: "Library", Icon: Library },
+    { id: "lead", label: "Progress", Icon: Clock }, { id: "preference", label: "Profile", Icon: User },
   ];
-
   return (
-    <div className="relative pt-6">
-      {/* Curved SVG Background */}
-      <div className="absolute inset-x-0 bottom-0 h-[72px] pointer-events-none">
-        <svg viewBox="0 0 375 72" fill="none" preserveAspectRatio="none" className="w-full h-full drop-shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
-          <path d="M0 0 L125 0 C140 0 145 38 187.5 38 C230 38 235 0 250 0 L375 0 L375 72 L0 72 Z" fill="white" />
+    <nav className="study-bottom-nav" aria-label="Main navigation">
+      <div className="nav-curved-background" aria-hidden="true">
+        <svg viewBox="0 0 375 72" fill="none" preserveAspectRatio="none">
+          <path d="M0 0 L125 0 C140 0 145 38 187.5 38 C230 38 235 0 250 0 L375 0 L375 72 L0 72 Z" fill="currentColor" />
         </svg>
       </div>
-
-      {/* FAB (Floating Action Button) */}
-      <button
-        onClick={onSnap}
-        className="absolute left-1/2 -top-1 -translate-x-1/2 w-[52px] h-[52px] rounded-full flex items-center justify-center shadow-[0_8px_16px_rgba(37,99,235,0.25)] z-10 transition-transform active:scale-95"
-        style={{ background: "linear-gradient(135deg, #E67468 0%, #D45B4F 100%)" }}
-      >
-        <Camera size={24} color="white" />
-      </button>
-
-      {/* Nav Items */}
-      <div className="relative z-0 flex h-[72px] items-end px-2">
-        {items.map((item, index) => {
-          const isCenter = index === 1; // After the second item, there's the big button
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTab(item.id)}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 pb-3 ${isCenter ? "mr-12" : ""}`}
-            >
-              <item.Icon size={24} color={tab === item.id ? "#E67468" : "#94A3B8"} strokeWidth={tab === item.id ? 2.5 : 2} />
-              <span className="text-[10px] font-semibold transition-colors" style={{ color: tab === item.id ? "#E67468" : "#94A3B8" }}>
-                {item.label}
-              </span>
-            </button>
-          );
-        })}
+      <button className="nav-upload" aria-label="Add material" onClick={onSnap}><Camera size={24} /></button>
+      <div className="nav-tabs">
+        {items.map((item, index) => (
+          <button key={item.id} className={`nav-tab${tab === item.id ? " active" : ""}${index === 1 ? " nav-before-camera" : ""}`} aria-current={tab === item.id ? "page" : undefined} onClick={() => onTab(item.id)}>
+            <item.Icon size={24} strokeWidth={tab === item.id ? 2.5 : 2} /><span>{item.label}</span>
+          </button>
+        ))}
       </div>
-    </div>
-  );
-}
-
-function BackBtn({ onPress, light = false }: { onPress: () => void; light?: boolean }) {
-  return (
-    <button onClick={onPress}
-      className="w-9 h-9 flex items-center justify-center rounded-xl"
-      style={{ background: light ? "rgba(255,255,255,0.12)" : "#FAF6F0", border: light ? "none" : "1px solid #EADFD3" }}>
-      <ChevronLeft size={20} color={light ? "white" : "#2E2A27"} />
-    </button>
+    </nav>
   );
 }
 
@@ -200,30 +214,6 @@ function PrimaryBtn({ label, onClick, full = true }: { label: string; onClick: (
       style={JK}>
       {label}
     </motion.button>
-  );
-}
-
-function GoogleBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={onClick} className="w-full bg-white border border-[#EADFD3] py-3.5 rounded-2xl flex items-center justify-center gap-3 text-[15px] font-semibold text-[#2E2A27]" style={INTER}>
-      <svg width="20" height="20" viewBox="0 0 20 20">
-        <path d="M19.6 10.23c0-.68-.06-1.36-.18-2H10v3.79h5.4c-.23 1.22-.95 2.25-2.01 2.94v2.44h3.26c1.9-1.75 3-4.32 3-7.17z" fill="#4285F4" />
-        <path d="M10 20c2.7 0 4.96-.9 6.61-2.43l-3.26-2.44c-.9.6-2.05.96-3.35.96-2.58 0-4.77-1.74-5.55-4.08H1.1v2.52A10 10 0 0 0 10 20z" fill="#34A853" />
-        <path d="M4.45 12.01A5.97 5.97 0 0 1 4.14 10c0-.7.12-1.37.31-2.01V5.47H1.1A10 10 0 0 0 0 10c0 1.61.39 3.14 1.1 4.53l3.35-2.52z" fill="#FBBC05" />
-        <path d="M10 3.92c1.45 0 2.76.5 3.78 1.48l2.83-2.83A9.97 9.97 0 0 0 10 0 10 10 0 0 0 1.1 5.47l3.35 2.52c.78-2.34 2.97-4.07 5.55-4.07z" fill="#EA4335" />
-      </svg>
-      Continue with Google
-    </motion.button>
-  );
-}
-
-function Divider() {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex-1 h-px bg-[#EADFD3]" />
-      <span className="text-[12px] text-[#94A3B8] font-medium">or continue with</span>
-      <div className="flex-1 h-px bg-[#EADFD3]" />
-    </div>
   );
 }
 
@@ -273,7 +263,7 @@ function SplashIllustration() {
 
 // ── Screen Components ─────────────────────────────────────────────────────────
 
-function SplashScreen({ nav }: { nav: (s: Screen) => void }) {
+function SplashScreen({ nav, onStartDemo }: { nav: (s: Screen) => void; onStartDemo: () => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-between px-7 pb-10 bg-[#FAF6F0]">
       <div className="flex-1 flex flex-col items-center justify-center gap-7">
@@ -291,114 +281,11 @@ function SplashScreen({ nav }: { nav: (s: Screen) => void }) {
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 2, delay: 0.4 }}>
           <PrimaryBtn label="Get Started" onClick={() => nav("signup")} />
         </motion.div>
+        <button onClick={onStartDemo} className="w-full py-3 rounded-2xl border border-[#EADFD3] bg-white text-[13px] font-bold text-[#695AA5]" style={JK}>Try the 3-question demo</button>
         <motion.button initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 2, delay: 0.6 }} onClick={() => nav("login")} className="w-full text-center text-[14px] text-[#8C8681]" style={INTER}>
           Already have an account?{" "}
           <span className="text-[#E67468] font-semibold">Sign in</span>
         </motion.button>
-      </div>
-    </div>
-  );
-}
-
-function SignUpScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSignup = async () => {
-    try {
-      setLoading(true);
-      await registerUser(email, pass, name);
-      nav("onboard-name");
-    } catch (err) {
-      console.error(err);
-      alert("Error signing up");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-full overflow-y-auto bg-white flex flex-col">
-      <div className="px-6 py-3 flex-shrink-0 sticky top-0 bg-white z-10"><BackBtn onPress={() => nav("splash")} /></div>
-      <div className="px-6 pb-10 flex-1">
-        <div className="space-y-5 mt-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <div>
-              <h2 className="text-[26px] font-bold text-[#2E2A27]" style={JK}>Create account</h2>
-              <p className="text-[14px] text-[#8C8681] mt-1" style={INTER}>Join thousands of Nigerian students excelling</p>
-            </div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.08 }} className="space-y-5">
-            <Field label="Full Name" placeholder="Enter your full name" value={name} onChange={setName} />
-            <Field label="Email Address" type="email" placeholder="Enter your email" value={email} onChange={setEmail} />
-            <Field label="Password" type="password" placeholder="Create a strong password" value={pass} onChange={setPass} />
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.16 }} className="space-y-4 pt-2">
-            <button onClick={handleSignup} disabled={loading} className="w-full py-4 rounded-2xl bg-[#E67468] text-white text-[15px] font-bold shadow-lg shadow-blue-500/20" style={JK}>
-              {loading ? "Creating..." : "Create Account"}
-            </button>
-            <Divider />
-            <GoogleBtn onClick={loginWithGoogle} />
-            <p className="text-center text-[13px] text-[#8C8681] pb-4" style={INTER}>
-              Already have an account? <span onClick={() => nav("login")} className="text-[#E67468] font-semibold cursor-pointer">Sign in</span>
-            </p>
-          </motion.div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function LoginScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleLogin = async () => {
-    try {
-      setLoading(true);
-      await loginUser(email, pass);
-      nav("home");
-    } catch (err) {
-      console.error(err);
-      alert("Error logging in");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="h-full overflow-y-auto bg-white flex flex-col">
-      <div className="px-6 py-3 flex-shrink-0 sticky top-0 bg-white z-10"><BackBtn onPress={() => nav("splash")} /></div>
-      <div className="px-6 pb-10 flex-1">
-        <div className="space-y-5 mt-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <div>
-              <h2 className="text-[26px] font-bold text-[#2E2A27]" style={JK}>Welcome back</h2>
-              <p className="text-[14px] text-[#8C8681] mt-1" style={INTER}>Sign in to continue your exam prep</p>
-            </div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.08 }} className="space-y-5">
-            <Field label="Email Address" type="email" placeholder="Enter your email" value={email} onChange={setEmail} />
-            <Field label="Password" type="password" placeholder="Your password" value={pass} onChange={setPass} />
-            <div className="flex justify-end">
-              <button onClick={() => nav("forgot-password")} className="text-[13px] text-[#E67468] font-semibold">Forgot password?</button>
-            </div>
-          </motion.div>
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.16 }} className="space-y-4 pt-2">
-            <button onClick={handleLogin} disabled={loading} className="w-full py-4 rounded-2xl bg-[#E67468] text-white text-[15px] font-bold shadow-lg shadow-blue-500/20" style={JK}>
-              {loading ? "Signing in..." : "Sign In"}
-            </button>
-            <Divider />
-            <GoogleBtn onClick={loginWithGoogle} />
-            <p className="text-center text-[14px] text-[#8C8681] pb-4" style={INTER}>
-              {"Don't have an account? "}
-              <button onClick={() => nav("signup")} className="text-[#E67468] font-semibold cursor-pointer">Sign up</button>
-            </p>
-          </motion.div>
-        </div>
       </div>
     </div>
   );
@@ -411,7 +298,6 @@ function OnboardNameScreen({ nav, onName }: { nav: (s: Screen) => void; onName: 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center justify-between">
-        <BackBtn onPress={() => nav("login")} />
         <OnboardStep step={1} />
         <div className="w-9" />
       </div>
@@ -443,258 +329,6 @@ function OnboardNameScreen({ nav, onName }: { nav: (s: Screen) => void; onName: 
   );
 }
 
-function ForgotScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  return (
-    <div className="h-full flex flex-col bg-white">
-      <div className="px-6 py-3"><BackBtn onPress={() => nav("login")} /></div>
-      <div className="flex-1 px-6 pb-8 flex flex-col">
-        {!sent ? (
-          <>
-            <div className="w-14 h-14 rounded-2xl bg-[#F5E8E7] flex items-center justify-center mb-5">
-              <svg width="28" height="24" viewBox="0 0 28 24" fill="none">
-                <rect x="2" y="4" width="24" height="18" rx="3" stroke="#E67468" strokeWidth="2" />
-                <path d="M2 8 L14 16 L26 8" stroke="#E67468" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </div>
-            <h2 className="text-[24px] font-bold text-[#2E2A27] mb-2" style={JK}>Forgot password?</h2>
-            <p className="text-[14px] text-[#8C8681] leading-relaxed mb-6" style={INTER}>
-              No worries. Enter your email and {"we'll"} send you a reset link.
-            </p>
-            <Field label="Email Address" type="email" placeholder="Enter your email" value={email} onChange={setEmail} />
-            <div className="flex-1" />
-            <PrimaryBtn label="Send Reset Link" onClick={() => setSent(true)} />
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 rounded-full bg-[#DCFCE7] flex items-center justify-center mb-6">
-              <Check size={36} color="#22C55E" strokeWidth={2.5} />
-            </div>
-            <h2 className="text-[22px] font-bold text-[#2E2A27] mb-3" style={JK}>Check your inbox</h2>
-            <p className="text-[14px] text-[#8C8681] leading-relaxed mb-8" style={INTER}>
-              {"We've"} sent a reset link to{" "}
-              <span className="font-semibold text-[#2E2A27]">{email || "your email"}</span>.
-            </p>
-            <PrimaryBtn label="Back to Sign In" onClick={() => nav("login")} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function HomeTab({ nav, onTab, userName }: {
-  nav: (s: Screen) => void;
-  onTab: (t: NavTab) => void;
-  userName: string;
-}) {
-  return (
-    <div className="h-full px-5 pt-3 pb-4 relative flex flex-col items-center">
-      {/* Top right notification bell */}
-      <div className="absolute top-3 right-5">
-        <button className="w-10 h-10 rounded-full bg-white border border-[#EADFD3] flex items-center justify-center relative">
-          <Bell size={18} color="#8C8681" />
-          <div className="absolute top-2 right-2 w-2 h-2 bg-[#EF4444] rounded-full" />
-        </button>
-      </div>
-
-      {/* Centered Welcome Text */}
-      <div className="flex-1 flex flex-col items-center justify-center text-center">
-        <p className="text-[16px] text-[#8C8681] font-medium mb-1" style={INTER}>Welcome,</p>
-        <h2 className="text-[32px] font-bold text-[#2E2A27]" style={JK}>{userName ? userName.split(" ")[0] : "Student"}</h2>
-      </div>
-    </div>
-  );
-}
-
-function HistoryTab({ nav, sessions }: { nav: (s: Screen) => void; sessions: any[] }) {
-  return (
-    <div className="px-5 pt-3 pb-4">
-      <h2 className="text-[22px] font-bold text-[#2E2A27] mb-4" style={JK}>History</h2>
-      {sessions.length === 0 ? (
-        <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="w-full max-w-[320px] rounded-3xl border border-dashed border-[#CBD5E1] bg-white p-8 text-center shadow-sm">
-            <p className="text-[15px] font-semibold text-[#2E2A27]" style={JK}>No history found</p>
-            <p className="text-[12px] text-[#8C8681] mt-2" style={INTER}>You haven't completed any tests yet.</p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sessions.map(s => {
-            const p = pct(s.score, s.total);
-            return (
-              <div key={s.id} className="bg-white rounded-2xl border border-[#EADFD3] p-4 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: sColor(p) + "1A" }}>
-                  <span className="text-[14px] font-black" style={{ color: sColor(p), ...MONO }}>{p}%</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-[#2E2A27] truncate" style={JK}>{s.title}</p>
-                  <p className="text-[11px] text-[#94A3B8] mt-0.5" style={INTER}>{s.date} · {s.duration} · {s.score}/{s.total}</p>
-                  <div className="h-1 bg-[#F1F5F9] rounded-full mt-1.5 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${p}%`, background: sColor(p) }} />
-                  </div>
-                </div>
-                <button onClick={() => nav("results")} className="w-8 h-8 rounded-lg bg-[#FAF6F0] border border-[#EADFD3] flex items-center justify-center">
-                  <Eye size={14} color="#8C8681" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LibraryTab({
-  nav,
-  globalLibrary,
-  offlineLibrary,
-  libraryCatalog,
-  onOpenBundle,
-  onDownloadBundle,
-  onSelectManufacturer,
-}: {
-  nav: (s: Screen) => void;
-  globalLibrary: any[];
-  offlineLibrary: any[];
-  libraryCatalog: LibraryCatalog | null;
-  onOpenBundle: (bundle: any) => void;
-  onDownloadBundle: (bundle: any) => void;
-  onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
-}) {
-  const [tab, setTab] = useState<"browse" | "flat" | "downloaded">("browse");
-  const [search, setSearch] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const activeList = tab === "downloaded" ? offlineLibrary : globalLibrary;
-
-  const filteredItems = activeList.filter((item: any) => {
-    const title = (item.title || item.name || "").toLowerCase();
-    if (search && !title.includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-3 pb-0 bg-white border-b border-[#EADFD3]">
-        <h2 className="text-[22px] font-bold text-[#2E2A27] mb-4" style={JK}>Library</h2>
-
-        <div className="relative mb-4">
-          <div className="absolute left-4 top-1/2 -translate-y-1/2">
-            <Search size={16} color="#94A3B8" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search past questions, topics..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-[#F1F5F9] rounded-2xl pl-11 pr-4 py-3.5 text-[14px] text-[#2E2A27] outline-none border border-transparent focus:border-[#E67468] transition-all"
-            style={INTER}
-          />
-        </div>
-
-        <div className="flex gap-4 overflow-x-auto">
-          <button
-            onClick={() => setTab("browse")}
-            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "browse" ? "text-[#E67468]" : "text-[#8C8681]"}`}
-            style={JK}
-          >
-            Browse
-            {tab === "browse" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
-          </button>
-          <button
-            onClick={() => setTab("flat")}
-            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "flat" ? "text-[#E67468]" : "text-[#8C8681]"}`}
-            style={JK}
-          >
-            All Bundles
-            {tab === "flat" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
-          </button>
-          <button
-            onClick={() => setTab("downloaded")}
-            className={`pb-3 text-[13px] font-semibold whitespace-nowrap transition-all relative ${tab === "downloaded" ? "text-[#E67468]" : "text-[#8C8681]"}`}
-            style={JK}
-          >
-            Downloaded
-            {tab === "downloaded" && <motion.div layoutId="libTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#E67468] rounded-t-full" />}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4">
-        {tab === "browse" ? (
-          <CatalogBrowser
-            catalog={libraryCatalog || { universities: [] }}
-            onSelectManufacturer={onSelectManufacturer}
-            onFlatBrowse={() => setTab("flat")}
-          />
-        ) : filteredItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center py-10">
-            <div className="w-16 h-16 rounded-full bg-[#F1F5F9] flex items-center justify-center mb-3">
-              <Library size={24} color="#94A3B8" />
-            </div>
-            <p className="text-[15px] font-semibold text-[#2E2A27]" style={JK}>
-              {tab === "downloaded" ? "No downloads yet" : search ? "No items found" : "Library is empty"}
-            </p>
-            <p className="text-[12px] text-[#8C8681] mt-1 max-w-[220px]" style={INTER}>
-              {tab === "downloaded"
-                ? "Snap/upload past questions or download bundles to see them here"
-                : search
-                  ? "Try a different search term"
-                  : "Past question bundles will appear here once added"}
-            </p>
-          </div>
-        ) : (
-          filteredItems.map((item: any) => {
-            const isDownloaded = offlineLibrary.some((o) => o.id === item.id);
-            const qCount = Array.isArray(item.questions) ? item.questions.length : item.question_count || 0;
-            return (
-              <div key={item.id} className="bg-white rounded-2xl border border-[#EADFD3] p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-[#F5E8E7] flex items-center justify-center text-xl flex-shrink-0">
-                  {item.icon || "📚"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-[#2E2A27] truncate" style={JK}>{item.title || item.name}</p>
-                  <p className="text-[11px] text-[#8C8681] mt-0.5" style={INTER}>
-                    {qCount ? `${qCount} questions · ` : ""}
-                    {isDownloaded || tab === "downloaded" ? "Ready offline" : "Available to download"}
-                  </p>
-                </div>
-                {isDownloaded || tab === "downloaded" ? (
-                  <button
-                    onClick={() => onOpenBundle(item)}
-                    className="px-3.5 py-2 rounded-xl bg-[#E67468] text-white text-[12px] font-bold shadow-sm"
-                    style={JK}
-                  >
-                    Start CBT
-                  </button>
-                ) : (
-                  <button
-                    disabled={busyId === item.id}
-                    onClick={async () => {
-                      setBusyId(item.id);
-                      try {
-                        await onDownloadBundle(item);
-                      } finally {
-                        setBusyId(null);
-                      }
-                    }}
-                    className="w-9 h-9 rounded-full flex items-center justify-center border bg-white border-[#EADFD3]"
-                  >
-                    <Download size={14} color="#8C8681" />
-                  </button>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-
 function HomeScreen({
   nav,
   tab,
@@ -704,9 +338,12 @@ function HomeScreen({
   offlineLibrary,
   globalLibrary,
   libraryCatalog,
+  libraryStatus,
+  onRetryLibrary,
   onOpenBundle,
   onDownloadBundle,
   onSelectManufacturer,
+  onStartDemo,
 }: {
   nav: (s: Screen) => void;
   tab: NavTab;
@@ -716,27 +353,32 @@ function HomeScreen({
   offlineLibrary: any[];
   globalLibrary: any[];
   libraryCatalog: LibraryCatalog | null;
+  libraryStatus: "loading" | "ready" | "error";
+  onRetryLibrary: () => void;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
+  onStartDemo: () => void;
 }) {
   return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="flex-1 overflow-y-auto">
-        {tab === "home" && <HomeTab nav={nav} onTab={onTab} userName={userName} />}
+    <div className="study-shell">
+      <div className="study-shell-content">
+        {tab === "home" && <StudyHome name={userName} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
-          <LibraryTab
-            nav={nav}
+          <StudyLibrary
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
-            libraryCatalog={libraryCatalog}
-            onOpenBundle={onOpenBundle}
-            onDownloadBundle={onDownloadBundle}
-            onSelectManufacturer={onSelectManufacturer}
+            catalog={libraryCatalog}
+            status={libraryStatus}
+            onRetry={onRetryLibrary}
+            onOpen={onOpenBundle}
+            onDownload={onDownloadBundle}
+            onSelect={onSelectManufacturer}
+            onUpload={() => nav("snap")}
           />
         )}
-        {tab === "lead" && <HistoryTab nav={nav} sessions={sessions} />}
-        {tab === "preference" && <div className="p-5">Preference Tab Placeholder</div>}
+        {tab === "lead" && <StudyProgress sessions={sessions} onStart={onStartDemo} />}
+        {tab === "preference" && <div className="p-5 text-[14px] text-[#8C8681]">Opening your study preferences…</div>}
       </div>
       <BottomNav tab={tab} onTab={onTab} onSnap={() => nav("snap")} />
     </div>
@@ -754,17 +396,24 @@ function SnapScreen({
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [materialName, setMaterialName] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0, stage: "Preparing" });
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // High-fidelity image compression (2K resolution, 0.88 quality for razor-sharp math OCR)
-  const compressImage = (file: File, maxDim = 2048, quality = 0.88): Promise<File> => {
+  // Retain enough resolution for small option labels, superscripts and diagrams.
+  const compressImage = (file: File, maxDim = 3200, quality = 0.92): Promise<File> => {
     return new Promise((resolve) => {
       if (!file.type.startsWith("image/") && !file.name.match(/\.(heic|heif|jpg|jpeg|png|webp|bmp)$/i)) {
         return resolve(file);
       }
       const img = new Image();
       const url = URL.createObjectURL(file);
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        // HEIC/HEIF is commonly unsupported by browsers; send the original to
+        // the server's bounded decoder instead of leaving the upload hanging.
+        resolve(file);
+      };
       img.onload = () => {
         URL.revokeObjectURL(url);
         let { width, height } = img;
@@ -791,10 +440,6 @@ function SnapScreen({
           quality
         );
       };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve(file);
-      };
       img.src = url;
     });
   };
@@ -803,30 +448,54 @@ function SnapScreen({
     if (!pendingFiles.length || uploading) return;
     const name = materialName.trim() || "New Material";
     setUploading(true);
+    setUploadProgress({ done: 0, total: pendingFiles.length, stage: "Preparing files" });
     try {
-      const session = await createVisionSession({ name, icon: "📖" });
       const pdfs = pendingFiles.filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
-      const rawImages = sortUploadFiles(
-        pendingFiles.filter((f) => !(f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")))
+      const textFiles = pendingFiles.filter((f) => /\.(?:txt|md|json)$/i.test(f.name) || /^(?:text\/|application\/json)/i.test(f.type));
+      // Preserve the exact order shown in the upload dialog, including manual
+      // reordering performed by the student.
+      const rawImages = pendingFiles.filter((f) =>
+        f.type.startsWith("image/") || /\.(?:heic|heif|jpg|jpeg|png|webp|bmp|tif|tiff)$/i.test(f.name)
       );
-      if (!pdfs.length && !rawImages.length) throw new Error("No supported files");
+      if (pdfs.length + textFiles.length + rawImages.length !== pendingFiles.length) {
+        throw new Error("Unsupported file type. Use PDF, a common image format, TXT, Markdown, or JSON.");
+      }
+      if (!pdfs.length && !rawImages.length && !textFiles.length) throw new Error("No supported files");
 
+      if (textFiles.length) {
+        if (textFiles.length > 1 || pdfs.length || rawImages.length) {
+          throw new Error("Upload one text, Markdown, or JSON file at a time, without mixing it with photos or PDFs.");
+        }
+        setUploadProgress({ done: 0, total: 1, stage: "Reading structured text" });
+        const result = await extractVisionText({ text: await textFiles[0].text(), name, icon: "📝" });
+        setUploadProgress({ done: 1, total: 1, stage: "Text imported" });
+        onSessionStarted(result.sessionId || result.jobId || "");
+        nav("processing");
+        return;
+      }
+
+      const session = await createVisionSession({ name, icon: "📖" });
+
+      if (pdfs.length > 1 || (pdfs.length && rawImages.length)) {
+        throw new Error("Upload one PDF at a time, or upload photos as a separate material.");
+      }
       if (pdfs.length) {
+        setUploadProgress({ done: 0, total: 1, stage: "Uploading PDF" });
         await uploadSessionPdf(session.id, pdfs[0]);
+        setUploadProgress({ done: 1, total: 1, stage: "PDF uploaded" });
       }
       if (rawImages.length) {
-        // Compress all images in parallel
-        const images = await Promise.all(rawImages.map((f) => compressImage(f)));
         const chunkSize = 8;
-        const chunks: File[][] = [];
-        for (let i = 0; i < images.length; i += chunkSize) {
-          chunks.push(images.slice(i, i + chunkSize));
-        }
-        
-        // Upload chunks with parallel concurrency (up to 3 simultaneous uploads)
-        for (let i = 0; i < chunks.length; i += 3) {
-          const batch = chunks.slice(i, i + 3);
-          await Promise.all(batch.map((chunk) => uploadSessionPages(session.id, chunk)));
+        // Bounded sequential batches prevent mobile memory exhaustion and make
+        // page numbering deterministic even on slow/retried networks.
+        for (let i = 0; i < rawImages.length; i += chunkSize) {
+          const rawChunk = rawImages.slice(i, i + chunkSize);
+          setUploadProgress({ done: i, total: rawImages.length, stage: `Preparing pages ${i + 1}–${Math.min(i + chunkSize, rawImages.length)}` });
+          const images: File[] = [];
+          for (const file of rawChunk) images.push(await compressImage(file));
+          setUploadProgress({ done: i, total: rawImages.length, stage: "Uploading prepared pages" });
+          await uploadSessionPages(session.id, images, i);
+          setUploadProgress({ done: Math.min(i + images.length, rawImages.length), total: rawImages.length, stage: "Uploaded" });
         }
       }
 
@@ -948,7 +617,6 @@ function SnapScreen({
         </div>
       )}
       <div style={{ paddingTop: 52 }} className="px-5 flex items-center justify-between pb-6">
-        <BackBtn onPress={() => nav("home")} />
         <span className="text-[#2E2A27] font-bold text-[17px]" style={JK}>Scan Question Paper</span>
         <div className="w-9" />
       </div>
@@ -977,7 +645,7 @@ function SnapScreen({
         <div className="absolute bottom-6 left-0 right-0 flex justify-center">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white/90 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-lg border border-white/20">
             <p className="text-[#2E2A27] text-[13px] font-medium text-center flex items-center gap-2" style={INTER}>
-              <Camera size={14} className="text-[#E67468]" /> Bulk photos or PDF — AI groups by year
+              <Camera size={14} className="text-[#E67468]" /> Bulk photos or PDF — AI keeps the book's own sections
             </p>
           </motion.div>
         </div>
@@ -987,7 +655,7 @@ function SnapScreen({
         <input 
           type="file" 
           ref={fileInputRef} 
-          accept="image/*,application/pdf" 
+          accept="image/*,application/pdf,.txt,.md,.json,text/plain,text/markdown,application/json"
           multiple 
           className="hidden" 
           onChange={onFileInputChange} 
@@ -1068,6 +736,20 @@ function SnapScreen({
                 {uploading ? "Uploading…" : "Extract"}
               </button>
             </div>
+            {uploading && (
+              <div className="mt-4" role="status" aria-live="polite">
+                <div className="flex justify-between text-[11px] text-[#8C8681] mb-1">
+                  <span>{uploadProgress.stage}</span>
+                  <span>{uploadProgress.done}/{uploadProgress.total}</span>
+                </div>
+                <div className="h-2 rounded-full bg-[#EADFD3] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#E67468] transition-all"
+                    style={{ width: `${uploadProgress.total ? Math.round((uploadProgress.done / uploadProgress.total) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
@@ -1091,14 +773,7 @@ function ManualEntryScreen({
     const icon = "📝";
 
     try {
-      const response = await fetch(apiUrl("/api/vision/extract-text"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, name, icon }),
-      });
-
-      if (!response.ok) throw new Error("Failed to process text");
-      const data = await response.json();
+      const data = await extractVisionText({ text, name, icon });
       onSessionStarted(data.sessionId || data.jobId);
       nav("processing");
     } catch (err) {
@@ -1111,7 +786,6 @@ function ManualEntryScreen({
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0] relative">
       <div style={{ paddingTop: 52 }} className="px-5 flex items-center justify-between pb-6">
-        <BackBtn onPress={() => nav("snap")} />
         <span className="text-[#2E2A27] font-bold text-[17px]" style={JK}>Manual Entry</span>
         <div className="w-9" />
       </div>
@@ -1162,16 +836,8 @@ function ProcessingScreen({
   const [dots, setDots] = useState("");
   const [session, setSession] = useState<VisionSession | null>(null);
   const [busyFu, setBusyFu] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState(false);
   const doneRef = useRef(false);
-
-  const phases = [
-    { pose: 0, text: "Scanning your paper", sub: "Identifying text regions" },
-    { pose: 1, text: "Reading with Groq vision", sub: "AI is analyzing every page" },
-    { pose: 4, text: "Extracting questions", sub: "Grouping by year & paper" },
-    { pose: 3, text: "Structuring into CBT format", sub: "Stitching continued pages" },
-    { pose: 2, text: "Checking patterns", sub: "Looking for missing pages" },
-    { pose: 5, text: "Almost there!", sub: "Polishing your question bank" },
-  ];
 
   const facts = [
     "Smart grouping keeps 2026 Paper A separate from Paper B.",
@@ -1183,7 +849,7 @@ function ProcessingScreen({
   ];
 
   useEffect(() => {
-    const t = setInterval(() => setPhase((p) => (p + 1) % phases.length), 4000);
+    const t = setInterval(() => setPhase((p) => (p + 1) % HIROSE_PROCESSING_PHASES.length), 4000);
     const d = setInterval(() => setDots((v) => (v.length >= 3 ? "" : v + ".")), 500);
     return () => {
       clearInterval(t);
@@ -1220,6 +886,7 @@ function ProcessingScreen({
       try {
         const s = await getVisionSession(sessionId);
         if (!active) return;
+        setConnectionError(false);
         setSession(s);
         if (s.status === "completed" || s.status === "completed_with_errors") {
           await finish(s);
@@ -1231,6 +898,7 @@ function ProcessingScreen({
         }
       } catch (err) {
         console.error(err);
+        if (active) setConnectionError(true);
       }
     };
 
@@ -1247,6 +915,19 @@ function ProcessingScreen({
   const done = (progress?.done || 0) + (progress?.skipped || 0);
   const pctDone = total ? Math.min(99, Math.round((done / total) * 100)) : 0;
   const followUps = (session?.followUps || []).filter((f) => f.status === "open");
+
+  if (!sessionId) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[#FAF6F0] px-6">
+        <div className="w-full max-w-sm rounded-3xl bg-white border border-[#EADFD3] p-6 text-center shadow-sm">
+          <AlertTriangle className="mx-auto text-[#E67468]" size={32} />
+          <h2 className="mt-3 text-[19px] font-bold text-[#2E2A27]" style={JK}>No extraction to display</h2>
+          <p className="mt-2 text-[13px] text-[#8C8681]" style={INTER}>The upload session was lost or has not started. Your existing library is safe.</p>
+          <button onClick={() => nav("snap")} className="mt-5 w-full py-3 rounded-2xl bg-[#E67468] text-white font-bold">Return to upload</button>
+        </div>
+      </div>
+    );
+  }
 
   const handleDismiss = async (fu: VisionFollowUp) => {
     if (!sessionId) return;
@@ -1309,6 +990,15 @@ function ProcessingScreen({
     }
   };
 
+  // paused = provider key/credit problem; needs_attention = a step could not be
+  // completed and is waiting for a resume. Both need the user, like needs_input.
+  const waitingForUser = ["needs_input", "paused", "needs_attention"].includes(session?.status || "");
+  const hiroseState: HiroseState = session?.status === "failed"
+    ? "failed"
+    : waitingForUser
+      ? "waiting"
+      : HIROSE_PROCESSING_PHASES[phase].state;
+
   return (
     <div className="h-full flex flex-col items-center justify-center bg-[#FAF6F0] relative overflow-hidden">
       <motion.div
@@ -1328,10 +1018,9 @@ function ProcessingScreen({
           initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: "spring", damping: 14, stiffness: 100 }}
+          className="relative"
         >
-          <Suspense fallback={<div className="h-[180px]" />}>
-            <Student3DScene pose={phases[phase].pose} />
-          </Suspense>
+          <HiroseLoadingPet state={hiroseState} size="lg" label={`Hirose ${hiroseState.replace("-", " ")} while PastQ processes your material`} />
         </motion.div>
 
         <motion.h2
@@ -1341,8 +1030,8 @@ function ProcessingScreen({
           className="text-[20px] font-bold text-[#2E2A27] text-center mt-2"
           style={JK}
         >
-          {session?.status === "needs_input" ? "Needs your input" : phases[phase].text}
-          {session?.status !== "needs_input" ? dots : ""}
+          {waitingForUser ? (session?.status === "paused" ? "Paused — action needed" : "Needs your input") : HIROSE_PROCESSING_PHASES[phase].text}
+          {!waitingForUser ? dots : ""}
         </motion.h2>
         <motion.p
           key={"s" + phase}
@@ -1354,7 +1043,7 @@ function ProcessingScreen({
         >
           {session?.memory?.activeYear
             ? `Reading ${session.memory.activeYear}${session.memory.activePaper ? " · Paper " + session.memory.activePaper : ""}`
-            : phases[phase].sub}
+            : HIROSE_PROCESSING_PHASES[phase].sub}
         </motion.p>
 
         <div className="w-full mb-2">
@@ -1376,6 +1065,34 @@ function ProcessingScreen({
           </div>
         </div>
 
+        {connectionError && (
+          <div className="w-full mb-3 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5" role="status">
+            <p className="text-[12px] font-semibold text-[#991B1B]">Connection interrupted</p>
+            <p className="text-[11px] text-[#B91C1C] mt-0.5">Reconnecting automatically. Processing continues on Hostinger.</p>
+          </div>
+        )}
+
+        {!!session?.pages?.length && (
+          <div className="w-full mb-3">
+            <div className="grid grid-cols-8 gap-1.5 max-h-20 overflow-y-auto" aria-label="Page processing status">
+              {session.pages.map((page) => {
+                const needsReview = page.imageQuality?.requiresHumanReview;
+                const color = page.status === "done" ? "#22C55E" : page.status === "processing" ? "#7A6CB2" : page.status === "failed" ? "#EF4444" : page.status === "needs_input" ? "#F59E0B" : "#D6CEC5";
+                return (
+                  <div
+                    key={page.id}
+                    title={`Page ${page.index + 1}: ${page.status}${needsReview ? " · review required" : ""}`}
+                    className="aspect-square rounded-md flex items-center justify-center text-[9px] font-bold bg-white"
+                    style={{ color, border: `2px solid ${needsReview ? "#F59E0B" : color}` }}
+                  >
+                    {page.index + 1}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {!!(session?.groups || []).length && (
           <p className="text-[11px] text-[#5C5550] mb-3 text-center" style={INTER}>
             {(session!.groups || []).slice(0, 4).map((g) => `${g.year}${g.paper && g.paper !== "Default" ? " " + g.paper : ""} (${g.count})`).join(" · ")}
@@ -1389,7 +1106,7 @@ function ProcessingScreen({
               <div key={fu.id} className="bg-white/90 border border-[#EADFD3] rounded-2xl p-3">
                 <p className="text-[12px] text-[#2E2A27] leading-snug mb-2" style={INTER}>{fu.message}</p>
                 <div className="flex gap-2">
-                  {(fu.type === "unclear_image" || fu.type === "missing_questions" || fu.type === "count_anomaly") && (
+                  {(fu.type === "unclear_image" || fu.type === "missing_questions" || fu.type === "missing_question_numbers" || fu.type === "count_anomaly") && (
                     <button
                       disabled={busyFu === fu.id}
                       onClick={() => handleAttachClearer(fu)}
@@ -1398,26 +1115,28 @@ function ProcessingScreen({
                       {fu.type === "unclear_image" ? "Upload clearer" : "Add missing page"}
                     </button>
                   )}
-                  <button
-                    disabled={busyFu === fu.id}
-                    onClick={() => handleDismiss(fu)}
-                    className="px-3 py-2 rounded-xl text-[11px] font-bold bg-[#FAF6F0] text-[#8C8681]"
-                  >
-                    Dismiss
-                  </button>
+                  {fu.type !== "unclear_image" && (
+                    <button
+                      disabled={busyFu === fu.id}
+                      onClick={() => handleDismiss(fu)}
+                      className="px-3 py-2 rounded-xl text-[11px] font-bold bg-[#FAF6F0] text-[#8C8681]"
+                    >
+                      Dismiss
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {(session?.status === "needs_input" || (progress?.failed || 0) > 0) && (
+        {((progress?.failed || 0) > 0 || waitingForUser) && (
           <button onClick={handleResume} className="mb-3 px-4 py-2 rounded-xl text-[12px] font-bold bg-[#7A6CB2] text-white">
-            Resume / retry failed pages
+            {(progress?.failed || 0) > 0 ? "Retry failed pages" : "Resume"}
           </button>
         )}
 
-        {(session?.questions || []).length > 0 && (session?.status === "needs_input" || session?.status === "completed_with_errors") && (
+        {(session?.questions || []).length > 0 && (waitingForUser || session?.status === "completed_with_errors") && (
           <button
             onClick={() => onQuestionsReady(session!.questions || [], { groups: session!.groups, name: session!.name, sessionId: session!.id })}
             className="mb-3 px-4 py-2 rounded-xl text-[12px] font-bold border border-[#EADFD3] text-[#2E2A27] bg-white"
@@ -1443,689 +1162,6 @@ function ProcessingScreen({
   );
 }
 
-function ExamCalculator({ onClose }: { onClose: () => void }) {
-  const [display, setDisplay] = useState("0");
-  const [expr, setExpr] = useState("");
-  const [justEvaluated, setJustEvaluated] = useState(false);
-
-  const evaluate = (raw: string) => {
-    const cleaned = raw
-      .replace(/×/g, "*")
-      .replace(/÷/g, "/")
-      .replace(/−/g, "-")
-      .replace(/%/g, "/100");
-    // eslint-disable-next-line no-new-func
-    const result = Function(`"use strict"; return (${cleaned})`)();
-    if (!Number.isFinite(result)) throw new Error("Invalid");
-    return String(Math.round(result * 1e10) / 1e10);
-  };
-
-  const press = (key: string) => {
-    if (key === "C") {
-      setDisplay("0");
-      setExpr("");
-      setJustEvaluated(false);
-      return;
-    }
-    if (key === "⌫") {
-      if (justEvaluated) {
-        setDisplay("0");
-        setExpr("");
-        setJustEvaluated(false);
-        return;
-      }
-      setDisplay((d) => (d.length <= 1 ? "0" : d.slice(0, -1)));
-      return;
-    }
-    if (key === "=") {
-      try {
-        const full = (expr ? expr + display : display);
-        const out = evaluate(full);
-        setDisplay(out);
-        setExpr("");
-        setJustEvaluated(true);
-      } catch {
-        setDisplay("Error");
-        setExpr("");
-        setJustEvaluated(true);
-      }
-      return;
-    }
-    if (key === "√") {
-      try {
-        const n = parseFloat(display);
-        if (!Number.isFinite(n) || n < 0) throw new Error("Invalid");
-        const out = String(Math.round(Math.sqrt(n) * 1e10) / 1e10);
-        setDisplay(out);
-        setExpr("");
-        setJustEvaluated(true);
-      } catch {
-        setDisplay("Error");
-        setExpr("");
-        setJustEvaluated(true);
-      }
-      return;
-    }
-    if (key === "±") {
-      if (display === "0" || display === "Error") return;
-      setDisplay((d) => (d.startsWith("-") ? d.slice(1) : `-${d}`));
-      return;
-    }
-
-    const isOp = ["+", "−", "×", "÷"].includes(key);
-    if (isOp) {
-      const base = justEvaluated || !expr ? display : expr + display;
-      const trimmed = /[+\−×÷]$/.test(base) ? base.slice(0, -1) + key : base + key;
-      setExpr(trimmed);
-      setDisplay("0");
-      setJustEvaluated(false);
-      return;
-    }
-
-    if (key === "%") {
-      try {
-        const out = evaluate(display + "/100");
-        setDisplay(out);
-        setJustEvaluated(true);
-        setExpr("");
-      } catch {
-        setDisplay("Error");
-        setJustEvaluated(true);
-      }
-      return;
-    }
-
-    if (justEvaluated) {
-      setDisplay(key === "." ? "0." : key);
-      setExpr("");
-      setJustEvaluated(false);
-      return;
-    }
-
-    if (key === ".") {
-      setDisplay((d) => (d.includes(".") ? d : d + "."));
-      return;
-    }
-
-    setDisplay((d) => (d === "0" || d === "Error" ? key : d + key));
-  };
-
-  const keys = [
-    ["C", "⌫", "%", "÷"],
-    ["7", "8", "9", "×"],
-    ["4", "5", "6", "−"],
-    ["1", "2", "3", "+"],
-    ["±", "0", ".", "="],
-  ];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[60] bg-black/45 flex items-end"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ y: 40 }}
-        animate={{ y: 0 }}
-        exit={{ y: 40 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full bg-white rounded-t-[28px] px-4 pt-3 pb-6 shadow-2xl"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-[#F5E8E7] flex items-center justify-center">
-              <Calculator size={16} color="#E67468" />
-            </div>
-            <div>
-              <p className="text-[14px] font-bold text-[#2E2A27]" style={JK}>Calculator</p>
-              <p className="text-[11px] text-[#8C8681]" style={INTER}>Tap outside or ✕ to close</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-full bg-[#FAF6F0] border border-[#EADFD3] flex items-center justify-center">
-            <X size={16} color="#2E2A27" />
-          </button>
-        </div>
-
-        <div className="rounded-2xl bg-[#1C1917] px-4 py-4 mb-3 min-h-[84px] flex flex-col justify-end">
-          <p className="text-[12px] text-[#A8A29E] text-right truncate min-h-[16px]" style={MONO}>{expr ? expr + display : " "}</p>
-          <p className="text-[32px] font-bold text-white text-right leading-none truncate" style={MONO}>{display}</p>
-        </div>
-
-        <div className="grid grid-cols-4 gap-2 mb-2">
-          {keys.flat().map((k) => {
-            const isOp = ["÷", "×", "−", "+", "="].includes(k);
-            const isFn = ["C", "⌫", "%", "±"].includes(k);
-            return (
-              <button
-                key={k}
-                onClick={() => press(k)}
-                className="h-14 rounded-2xl text-[18px] font-bold active:scale-95 transition-transform"
-                style={{
-                  background: k === "=" ? "#E67468" : isOp ? "#F5E8E7" : isFn ? "#FAF6F0" : "#F8F4EE",
-                  color: k === "=" ? "white" : isOp ? "#E67468" : "#2E2A27",
-                  border: `1px solid ${k === "=" ? "#E67468" : "#EADFD3"}`,
-                  ...MONO,
-                }}
-              >
-                {k}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => press("√")}
-          className="w-full h-12 rounded-2xl border border-[#EADFD3] bg-[#FAF6F0] text-[15px] font-bold text-[#2E2A27]"
-          style={JK}
-        >
-          √ Square root
-        </button>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function SolvePad({
-  question,
-  options,
-  selected,
-  onSelect,
-  onClose,
-}: {
-  question: string;
-  options: string[];
-  selected: number | null;
-  onSelect: (i: number) => void;
-  onClose: () => void;
-}) {
-  const WORLD_W = 1600;
-  const WORLD_H = 2200;
-  const MIN_ZOOM = 0.5;
-  const MAX_ZOOM = 3;
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-
-  const [tool, setTool] = useState<"pen" | "eraser">("pen");
-  const [color, setColor] = useState("#2E2A27");
-  const [size, setSize] = useState(4);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [qOpen, setQOpen] = useState(true);
-  const [canUndo, setCanUndo] = useState(false);
-
-  const strokesRef = useRef<{
-    tool: "pen" | "eraser";
-    color: string;
-    size: number;
-    points: { x: number; y: number }[];
-  }[]>([]);
-  const drawing = useRef(false);
-  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStart = useRef<{ dist: number; zoom: number; pan: { x: number; y: number }; mid: { x: number; y: number } } | null>(null);
-  const toolRef = useRef(tool);
-  const colorRef = useRef(color);
-  const sizeRef = useRef(size);
-  const zoomRef = useRef(zoom);
-  const panRef = useRef(pan);
-
-  useEffect(() => { toolRef.current = tool; }, [tool]);
-  useEffect(() => { colorRef.current = color; }, [color]);
-  useEffect(() => { sizeRef.current = size; }, [size]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
-  useEffect(() => { panRef.current = pan; }, [pan]);
-
-  const drawGrid = (ctx: CanvasRenderingContext2D) => {
-    ctx.fillStyle = "#FFFEFB";
-    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    ctx.strokeStyle = "#EEE8DF";
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= WORLD_W; x += 28) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, WORLD_H);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= WORLD_H; y += 28) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WORLD_W, y);
-      ctx.stroke();
-    }
-    // stronger every 5th line — helpful for physics sketches
-    ctx.strokeStyle = "#E2D9CC";
-    for (let x = 0; x <= WORLD_W; x += 140) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, WORLD_H);
-      ctx.stroke();
-    }
-    for (let y = 0; y <= WORLD_H; y += 140) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WORLD_W, y);
-      ctx.stroke();
-    }
-  };
-
-  const redraw = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    drawGrid(ctx);
-    for (const stroke of strokesRef.current) {
-      if (stroke.points.length < 1) continue;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.globalCompositeOperation = "source-over";
-      if (stroke.tool === "eraser") {
-        ctx.strokeStyle = "#FFFEFB";
-        ctx.lineWidth = stroke.size * 5;
-      } else {
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.size;
-      }
-      ctx.beginPath();
-      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-      for (let i = 1; i < stroke.points.length; i++) {
-        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-      }
-      if (stroke.points.length === 1) {
-        ctx.lineTo(stroke.points[0].x + 0.01, stroke.points[0].y);
-      }
-      ctx.stroke();
-    }
-    setCanUndo(strokesRef.current.length > 0);
-  };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(WORLD_W * dpr);
-    canvas.height = Math.floor(WORLD_H * dpr);
-    canvas.style.width = `${WORLD_W}px`;
-    canvas.style.height = `${WORLD_H}px`;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    redraw();
-
-    // Fit canvas to viewport width on open
-    const vp = viewportRef.current;
-    if (vp && vp.clientWidth > 0) {
-      const fit = Math.min(1, (vp.clientWidth - 16) / WORLD_W);
-      const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fit));
-      setZoom(z);
-      setPan({ x: (vp.clientWidth - WORLD_W * z) / 2, y: 8 });
-    }
-  }, []);
-
-  const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
-
-  const setZoomAround = (nextZoom: number, anchorX: number, anchorY: number) => {
-    const z0 = zoomRef.current;
-    const z1 = clampZoom(nextZoom);
-    if (z1 === z0) return;
-    const p = panRef.current;
-    // Keep the world point under the anchor stable
-    const worldX = (anchorX - p.x) / z0;
-    const worldY = (anchorY - p.y) / z0;
-    const nextPan = {
-      x: anchorX - worldX * z1,
-      y: anchorY - worldY * z1,
-    };
-    setZoom(z1);
-    setPan(nextPan);
-  };
-
-  const zoomBy = (factor: number) => {
-    const vp = viewportRef.current;
-    if (!vp) {
-      setZoom((z) => clampZoom(z * factor));
-      return;
-    }
-    const ax = vp.clientWidth / 2;
-    const ay = vp.clientHeight / 2;
-    setZoomAround(zoomRef.current * factor, ax, ay);
-  };
-
-  const resetView = () => {
-    const vp = viewportRef.current;
-    if (!vp) {
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
-      return;
-    }
-    const fit = Math.min(1, (vp.clientWidth - 16) / WORLD_W);
-    const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fit));
-    setZoom(z);
-    setPan({ x: (vp.clientWidth - WORLD_W * z) / 2, y: 8 });
-  };
-
-  const worldPos = (clientX: number, clientY: number) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * WORLD_W;
-    const y = ((clientY - rect.top) / rect.height) * WORLD_H;
-    return {
-      x: Math.max(0, Math.min(WORLD_W, x)),
-      y: Math.max(0, Math.min(WORLD_H, y)),
-    };
-  };
-
-  const pointerDist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-    Math.hypot(a.x - b.x, a.y - b.y);
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (activePointers.current.size === 2) {
-      drawing.current = false;
-      const pts = [...activePointers.current.values()];
-      const dist = pointerDist(pts[0], pts[1]);
-      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-      const vp = viewportRef.current?.getBoundingClientRect();
-      pinchStart.current = {
-        dist: Math.max(dist, 1),
-        zoom: zoomRef.current,
-        pan: { ...panRef.current },
-        mid: vp ? { x: mid.x - vp.left, y: mid.y - vp.top } : mid,
-      };
-      return;
-    }
-
-    if (activePointers.current.size === 1) {
-      drawing.current = true;
-      const p = worldPos(e.clientX, e.clientY);
-      strokesRef.current.push({
-        tool: toolRef.current,
-        color: colorRef.current,
-        size: sizeRef.current,
-        points: [p],
-      });
-      redraw();
-    }
-  };
-
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!activePointers.current.has(e.pointerId)) return;
-    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-    if (activePointers.current.size >= 2 && pinchStart.current) {
-      drawing.current = false;
-      const pts = [...activePointers.current.values()];
-      const dist = pointerDist(pts[0], pts[1]);
-      const scale = dist / pinchStart.current.dist;
-      const nextZoom = clampZoom(pinchStart.current.zoom * scale);
-      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
-      const vp = viewportRef.current?.getBoundingClientRect();
-      const localMid = vp ? { x: mid.x - vp.left, y: mid.y - vp.top } : mid;
-      const worldX = (pinchStart.current.mid.x - pinchStart.current.pan.x) / pinchStart.current.zoom;
-      const worldY = (pinchStart.current.mid.y - pinchStart.current.pan.y) / pinchStart.current.zoom;
-      setZoom(nextZoom);
-      setPan({
-        x: localMid.x - worldX * nextZoom,
-        y: localMid.y - worldY * nextZoom,
-      });
-      // update pinch mid for next move so panning feels continuous
-      pinchStart.current = {
-        ...pinchStart.current,
-        mid: localMid,
-        pan: { x: localMid.x - worldX * nextZoom, y: localMid.y - worldY * nextZoom },
-        zoom: nextZoom,
-        dist: Math.max(dist, 1),
-      };
-      return;
-    }
-
-    if (!drawing.current || activePointers.current.size !== 1) return;
-    const stroke = strokesRef.current[strokesRef.current.length - 1];
-    if (!stroke) return;
-    const p = worldPos(e.clientX, e.clientY);
-    const last = stroke.points[stroke.points.length - 1];
-    if (last && Math.hypot(p.x - last.x, p.y - last.y) < 1.2) return;
-    stroke.points.push(p);
-    redraw();
-  };
-
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    activePointers.current.delete(e.pointerId);
-    if (activePointers.current.size < 2) pinchStart.current = null;
-    if (activePointers.current.size === 0) drawing.current = false;
-  };
-
-  const undo = () => {
-    if (strokesRef.current.length === 0) return;
-    strokesRef.current.pop();
-    redraw();
-  };
-
-  const clearPad = () => {
-    strokesRef.current = [];
-    redraw();
-  };
-
-  const colors = ["#2E2A27", "#E67468", "#2563EB", "#16A34A", "#7A6CB2"];
-  const zoomPct = Math.round(zoom * 100);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="absolute inset-0 z-[70] bg-[#FAF6F0] flex flex-col"
-    >
-      {/* Header */}
-      <div className="px-3 sm:px-4 pt-3 pb-2 bg-white border-b border-[#EADFD3] flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-[14px] font-bold text-[#2E2A27]" style={JK}>Solve Pad</p>
-          <p className="text-[11px] text-[#8C8681] truncate" style={INTER}>Draw workings · pinch to zoom</p>
-        </div>
-        <button
-          onClick={onClose}
-          className="w-10 h-10 flex-shrink-0 rounded-full bg-[#F5E8E7] flex items-center justify-center active:scale-95"
-          aria-label="Close solve pad"
-        >
-          <X size={18} color="#E67468" />
-        </button>
-      </div>
-
-      {/* Question (collapsible for more canvas space) */}
-      <div className="bg-white border-b border-[#EADFD3]">
-        <button
-          onClick={() => setQOpen((v) => !v)}
-          className="w-full px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 text-left"
-        >
-          <span className="text-[12px] font-bold text-[#8C8681]" style={JK}>
-            {qOpen ? "Hide question" : "Show question & options"}
-          </span>
-          {qOpen ? <ChevronUp size={16} color="#8C8681" /> : <ChevronDown size={16} color="#8C8681" />}
-        </button>
-        {qOpen && (
-          <div className="px-3 sm:px-4 pb-3 max-h-[32vh] overflow-y-auto">
-            <div className="text-[13px] sm:text-[14px] font-semibold text-[#2E2A27] leading-snug mb-2.5" style={INTER}>
-              <MathText text={question} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {options.map((opt, i) => {
-                const sel = selected === i;
-                return (
-                  <button
-                    key={i}
-                    onClick={() => onSelect(i)}
-                    className="flex items-center gap-2 p-2.5 rounded-xl border text-left active:scale-[0.99]"
-                    style={{ background: sel ? "#F5E8E7" : "#FAF6F0", borderColor: sel ? "#E67468" : "#EADFD3" }}
-                  >
-                    <span
-                      className="w-7 h-7 rounded-lg text-[12px] font-bold flex items-center justify-center flex-shrink-0"
-                      style={{ background: sel ? "#E67468" : "white", color: sel ? "white" : "#8C8681", ...JK }}
-                    >
-                      {String.fromCharCode(65 + i)}
-                    </span>
-                    <span className="text-[12px] sm:text-[13px] text-[#2E2A27] leading-snug" style={INTER}>
-                      <MathText text={opt} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Tools — pen/eraser first and obvious */}
-      <div className="px-3 sm:px-4 py-2.5 bg-white border-b border-[#EADFD3] space-y-2.5">
-        <div className="flex p-1 rounded-2xl bg-[#FAF6F0] border border-[#EADFD3]">
-          <button
-            onClick={() => setTool("pen")}
-            className="flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-[13px] font-bold transition-all"
-            style={{
-              background: tool === "pen" ? "#E67468" : "transparent",
-              color: tool === "pen" ? "white" : "#8C8681",
-              boxShadow: tool === "pen" ? "0 4px 12px rgba(230,116,104,0.28)" : "none",
-            }}
-          >
-            <PenLine size={16} /> Pencil
-          </button>
-          <button
-            onClick={() => setTool("eraser")}
-            className="flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-[13px] font-bold transition-all"
-            style={{
-              background: tool === "eraser" ? "#2E2A27" : "transparent",
-              color: tool === "eraser" ? "white" : "#8C8681",
-              boxShadow: tool === "eraser" ? "0 4px 12px rgba(46,42,39,0.2)" : "none",
-            }}
-          >
-            <Eraser size={16} /> Eraser
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
-          {tool === "pen" && colors.map((c) => (
-            <button
-              key={c}
-              onClick={() => setColor(c)}
-              className="w-8 h-8 rounded-full flex-shrink-0 border-2"
-              style={{
-                background: c,
-                borderColor: color === c ? "#E67468" : "white",
-                boxShadow: color === c ? "0 0 0 2px #F5E8E7" : "0 0 0 1px #EADFD3",
-              }}
-              aria-label={`Color ${c}`}
-            />
-          ))}
-          {tool === "pen" && <div className="w-px h-6 bg-[#EADFD3] flex-shrink-0" />}
-          {[3, 5, 8].map((s) => (
-            <button
-              key={s}
-              onClick={() => setSize(s)}
-              className="w-9 h-9 rounded-full border flex items-center justify-center flex-shrink-0"
-              style={{ borderColor: size === s ? "#E67468" : "#EADFD3", background: size === s ? "#F5E8E7" : "white" }}
-              aria-label={`Size ${s}`}
-            >
-              <span
-                className="rounded-full"
-                style={{
-                  width: s + 2,
-                  height: s + 2,
-                  background: tool === "eraser" ? "#A8A29E" : color,
-                }}
-              />
-            </button>
-          ))}
-          <div className="flex-1 min-w-2" />
-          <button
-            onClick={undo}
-            disabled={!canUndo}
-            className="w-10 h-10 rounded-xl bg-[#FAF6F0] border border-[#EADFD3] flex items-center justify-center disabled:opacity-35 active:scale-95"
-            aria-label="Undo"
-          >
-            <Undo2 size={16} color="#8C8681" />
-          </button>
-          <button
-            onClick={clearPad}
-            className="w-10 h-10 rounded-xl bg-[#FAF6F0] border border-[#EADFD3] flex items-center justify-center active:scale-95"
-            aria-label="Clear"
-          >
-            <Trash2 size={16} color="#EF4444" />
-          </button>
-        </div>
-      </div>
-
-      {/* Canvas viewport */}
-      <div ref={viewportRef} className="flex-1 relative min-h-0 overflow-hidden bg-[#F3EEE6]">
-        <div
-          ref={wrapRef}
-          className="absolute inset-0 touch-none"
-          style={{ cursor: tool === "eraser" ? "cell" : "crosshair" }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        >
-          <div
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: "0 0",
-              width: WORLD_W,
-              height: WORLD_H,
-            }}
-          >
-            <canvas ref={canvasRef} className="block rounded-sm shadow-sm" />
-          </div>
-        </div>
-
-        {/* Floating zoom controls */}
-        <div className="absolute right-3 bottom-3 flex flex-col gap-2">
-          <button
-            onClick={() => zoomBy(1.25)}
-            className="w-11 h-11 rounded-2xl bg-white border border-[#EADFD3] shadow-md flex items-center justify-center active:scale-95"
-            aria-label="Zoom in"
-          >
-            <ZoomIn size={18} color="#2E2A27" />
-          </button>
-          <button
-            onClick={() => zoomBy(0.8)}
-            className="w-11 h-11 rounded-2xl bg-white border border-[#EADFD3] shadow-md flex items-center justify-center active:scale-95"
-            aria-label="Zoom out"
-          >
-            <ZoomOut size={18} color="#2E2A27" />
-          </button>
-          <button
-            onClick={resetView}
-            className="h-11 px-2.5 rounded-2xl bg-white border border-[#EADFD3] shadow-md flex items-center justify-center text-[12px] font-bold text-[#2E2A27] active:scale-95"
-            style={MONO}
-            aria-label="Reset zoom"
-          >
-            {zoomPct}%
-          </button>
-        </div>
-
-        <div className="absolute left-3 bottom-3 px-2.5 py-1.5 rounded-full bg-white/90 border border-[#EADFD3] text-[10px] font-semibold text-[#8C8681]" style={INTER}>
-          {tool === "pen" ? "Pencil" : "Eraser"} · pinch zoom
-        </div>
-      </div>
-
-      <div className="px-3 sm:px-4 py-3 bg-white border-t border-[#EADFD3] safe-pb">
-        <button
-          onClick={onClose}
-          className="w-full py-3.5 rounded-2xl bg-[#E67468] text-white text-[15px] font-bold active:scale-[0.99]"
-          style={JK}
-        >
-          Done — Back to Test
-        </button>
-      </div>
-    </motion.div>
-  );
-}
-
 function ReviewQuestionsScreen({
   nav,
   questions,
@@ -2139,18 +1175,29 @@ function ReviewQuestionsScreen({
 }) {
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<Q | null>(null);
-  const [examDuration, setExamDuration] = useState(30 * 60);
+  const [durationMinutes, setDurationMinutes] = useState('30');
+  const uploadDuration = customDurationSeconds(durationMinutes);
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
 
   const groups = (() => {
     const map = new Map<string, { key: string; year: string; paper: string; items: Q[] }>();
+    // Sectioned (v2) extractions follow the document's own structure and order
+    // (topic-by-topic stays topic-by-topic); older ones fall back to year/paper.
+    const sectioned = questions.some((q) => q.section);
     for (const q of sortQuestions(questions)) {
+      if (sectioned) {
+        const key = q.sectionId || q.section || "unsectioned";
+        if (!map.has(key)) map.set(key, { key, year: "", paper: q.section || "Unsectioned", items: [] });
+        map.get(key)!.items.push(q);
+        continue;
+      }
       const year = q.year || "Unknown";
       const paper = q.paper || "Default";
       const key = `${year}::${paper}`;
       if (!map.has(key)) map.set(key, { key, year, paper, items: [] });
       map.get(key)!.items.push(q);
     }
+    if (sectioned) return Array.from(map.values());
     return Array.from(map.values()).sort((a, b) => {
       const ay = parseInt(a.year, 10) || 0;
       const by = parseInt(b.year, 10) || 0;
@@ -2163,6 +1210,8 @@ function ReviewQuestionsScreen({
     selectedGroup === "all"
       ? sortQuestions(questions)
       : sortQuestions(groups.find((g) => g.key === selectedGroup)?.items || questions);
+  const blockingQuestions = visible.filter((q) => !q.question.trim() || q.options.filter((option) => option.trim()).length < 2 || q.incomplete);
+  const reviewQuestions = visible.filter((q) => q.needsReview);
 
   const openEdit = (i: number) => {
     const q = visible[i];
@@ -2173,7 +1222,19 @@ function ReviewQuestionsScreen({
 
   const saveEdit = () => {
     if (editIndex === null || !draft) return;
-    const next = questions.map((q, i) => (i === editIndex ? { ...draft, options: draft.options.map((o) => o.trim()) } : q));
+    const options = draft.options.map((o) => o.trim()).filter(Boolean);
+    const incomplete = !draft.question.trim() || options.length < 2;
+    const reviewReasons = (draft.reviewReasons || []).filter((reason) => reason !== "insufficient_complete_options");
+    if (incomplete) reviewReasons.push("insufficient_complete_options");
+    const next = questions.map((q, i) => i === editIndex ? {
+      ...draft,
+      question: draft.question.trim(),
+      options,
+      incomplete,
+      reviewReasons: [...new Set(reviewReasons)],
+      needsReview: incomplete || reviewReasons.length > 0 || (draft.qualityFlags || []).length > 0,
+      correct: draft.correct != null && draft.correct < options.length ? draft.correct : null,
+    } : q);
     onUpdateQuestions(next);
     setEditIndex(null);
     setDraft(null);
@@ -2182,7 +1243,6 @@ function ReviewQuestionsScreen({
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0] relative">
       <div className="px-5 pt-2 pb-3 bg-white border-b border-[#EADFD3] flex items-center gap-3">
-        <BackBtn onPress={() => nav("home")} />
         <div>
           <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Review Questions</h2>
           <p className="text-[12px] text-[#8C8681]" style={INTER}>
@@ -2205,13 +1265,21 @@ function ReviewQuestionsScreen({
               onClick={() => setSelectedGroup(g.key)}
               className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border ${selectedGroup === g.key ? "bg-[#E67468] text-white border-[#E67468]" : "bg-[#FAF6F0] text-[#2E2A27] border-[#EADFD3]"}`}
             >
-              {g.year}{g.paper !== "Default" ? ` ${g.paper}` : ""} ({g.items.length})
+              {[g.year, g.paper !== "Default" ? g.paper : ""].filter(Boolean).join(" ")} ({g.items.length})
             </button>
           ))}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {(blockingQuestions.length > 0 || reviewQuestions.length > 0) && (
+          <div className="rounded-2xl border border-[#FCD34D] bg-[#FFFBEB] p-3">
+            <p className="text-[12px] font-bold text-[#92400E]" style={JK}>Quality review required</p>
+            <p className="mt-1 text-[11px] text-[#92400E]" style={INTER}>
+              {blockingQuestions.length} blocking · {reviewQuestions.length} flagged. Open each marked question and compare it with the source page.
+            </p>
+          </div>
+        )}
         {visible.map((q, i) => (
           <div key={`${q.id}-${i}`} className="bg-white rounded-2xl border border-[#EADFD3] p-4">
             <div className="flex items-start gap-3">
@@ -2232,7 +1300,16 @@ function ReviewQuestionsScreen({
                   {q.correct == null && (
                     <span className="text-[10px] text-[#8C8681] font-medium bg-[#FAF6F0] px-2 py-0.5 rounded-full">No key</span>
                   )}
+                  {typeof q.confidence === "number" && (
+                    <span className="text-[10px] text-[#5C5550] bg-white px-2 py-0.5 rounded-full border border-[#EADFD3]">
+                      {Math.round(q.confidence * 100)}% confidence
+                    </span>
+                  )}
+                  {q.topic && (
+                    <span className="text-[10px] text-[#2563EB] font-medium bg-[#EFF6FF] px-2 py-0.5 rounded-full border border-[#DBEAFE]">{q.topic}</span>
+                  )}
                 </div>
+                <QuestionMedia figures={q.figures} />
                 <p className="text-[13px] text-[#2E2A27] leading-snug line-clamp-2" style={INTER}>{q.question}</p>
                 <div className="flex gap-2 mt-1.5 flex-wrap">
                   {q.options.slice(0, 2).map((opt, j) => (
@@ -2241,6 +1318,11 @@ function ReviewQuestionsScreen({
                     </span>
                   ))}
                 </div>
+                {!![...(q.reviewReasons || []), ...(q.qualityFlags || [])].length && (
+                  <p className="mt-2 text-[10px] text-[#B45309]">
+                    {[...new Set([...(q.reviewReasons || []), ...(q.qualityFlags || [])])].join(" · ").replaceAll("_", " ")}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => openEdit(i)}
@@ -2255,23 +1337,20 @@ function ReviewQuestionsScreen({
       </div>
       <div className="px-5 py-4 bg-white border-t border-[#EADFD3]">
         <div className="flex flex-col gap-2 mb-4">
-          <label className="text-[12px] font-semibold text-[#8C8681]" style={INTER}>Exam Duration</label>
-          <div className="flex gap-2">
-            {[10, 20, 30, 60].map((m) => (
-              <button
-                key={m}
-                onClick={() => setExamDuration(m * 60)}
-                className={`flex-1 py-2 rounded-lg text-[13px] font-medium border ${examDuration === m * 60 ? "bg-[#E67468] text-white border-[#E67468]" : "bg-[#FAF6F0] text-[#2E2A27] border-[#EADFD3]"}`}
-              >
-                {m}m
-              </button>
-            ))}
-          </div>
+          <label htmlFor="upload-exam-time" className="text-[12px] font-semibold text-[#8C8681]" style={INTER}>Exam duration</label>
+          <div className="duration-input"><Clock size={17} /><input id="upload-exam-time" aria-label="Exam duration in minutes" type="number" min="0" step="any" inputMode="decimal" value={durationMinutes} onChange={event => setDurationMinutes(event.target.value)} aria-invalid={uploadDuration === null} /><span>min</span></div>
+          {uploadDuration === null && <p className="selection-error" role="alert">Enter a time greater than zero.</p>}
         </div>
-        <PrimaryBtn
-          label={selectedGroup === "all" ? "Looks good — Start Test" : `Start ${visible.length}-Q group`}
-          onClick={() => onStartTest(examDuration, visible)}
-        />
+        <button
+          disabled={blockingQuestions.length > 0 || !visible.some(isCbtQuestion) || uploadDuration === null}
+          onClick={() => { if (uploadDuration !== null) onStartTest(uploadDuration, visible.filter(isCbtQuestion)); }}
+          className="w-full bg-[#E67468] text-white py-4 rounded-2xl text-[15px] font-bold shadow-lg shadow-[#E67468]/20 disabled:bg-[#EADFD3] disabled:text-[#8C8681] disabled:shadow-none"
+          style={JK}
+        >
+          {blockingQuestions.length > 0
+            ? `Fix ${blockingQuestions.length} incomplete question${blockingQuestions.length === 1 ? "" : "s"}`
+            : selectedGroup === "all" ? "Looks good — Start Test" : `Start ${visible.length}-Q group`}
+        </button>
       </div>
       <AnimatePresence>
         {editIndex !== null && draft && (
@@ -2361,6 +1440,15 @@ function ReviewQuestionsScreen({
                 </div>
               ))}
 
+              {draft.options.length < 6 && (
+                <button
+                  onClick={() => setDraft({ ...draft, options: [...draft.options, ""] })}
+                  className="w-full mb-3 py-2.5 rounded-xl border border-dashed border-[#CBD5E1] text-[12px] font-semibold text-[#7A6CB2]"
+                >
+                  + Add option
+                </button>
+              )}
+
               <label className="text-[12px] font-semibold text-[#8C8681] mb-1 mt-2 block">Explanation</label>
               <textarea
                 value={draft.explanation}
@@ -2379,403 +1467,10 @@ function ReviewQuestionsScreen({
   );
 }
 
-function ExamScreen({
-  questions, answers, onAnswer, flagged, onFlag,
-  currentQ, onQ, timeLeft, showModal, onModal, onSubmit,
-}: {
-  questions: Q[];
-  answers: (number | null)[];
-  onAnswer: (qi: number, opt: number) => void;
-  flagged: boolean[];
-  onFlag: (qi: number) => void;
-  currentQ: number;
-  onQ: (qi: number) => void;
-  timeLeft: number;
-  showModal: boolean;
-  onModal: (v: boolean) => void;
-  onSubmit: () => void;
-  nav: (s: Screen) => void;
-}) {
-  const q = questions[currentQ];
-  const answered = answers.filter(a => a !== null).length;
-  const unanswered = questions.length - answered;
-  const flaggedCount = flagged.filter(Boolean).length;
-  const isLow = timeLeft < 300;
-  const isMid = timeLeft < 600 && !isLow;
-  const [showCalc, setShowCalc] = useState(false);
-  const [showPad, setShowPad] = useState(false);
-
-  if (!q) return null;
-
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0] relative">
-      {/* Header — no X; timer + tools */}
-      <div style={{ paddingTop: 48 }} className="px-4 pb-3 bg-white border-b border-[#EADFD3]">
-        <div className="flex items-center gap-2 mb-3">
-          <div
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl border"
-            style={{
-              borderColor: isLow ? "#FCA5A5" : isMid ? "#DDD6FE" : "#EADFD3",
-              background: isLow ? "#FEF2F2" : isMid ? "#F5F3FF" : "linear-gradient(135deg, #FFFBF7 0%, #FAF6F0 100%)",
-            }}
-          >
-            <Clock size={15} color={isLow ? "#EF4444" : isMid ? "#7A6CB2" : "#E67468"} />
-            <span
-              className="text-[20px] font-bold tracking-wide"
-              style={{ color: isLow ? "#EF4444" : isMid ? "#7A6CB2" : "#2E2A27", ...MONO }}
-            >
-              {fmt(timeLeft)}
-            </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: isLow ? "#EF4444" : "#8C8681" }}>
-              left
-            </span>
-          </div>
-
-          <button
-            onClick={() => setShowCalc(true)}
-            className="w-11 h-11 rounded-2xl bg-[#F5E8E7] border border-[#F0D4D0] flex items-center justify-center active:scale-95"
-            aria-label="Calculator"
-          >
-            <Calculator size={18} color="#E67468" />
-          </button>
-          <button
-            onClick={() => setShowPad(true)}
-            className="w-11 h-11 rounded-2xl bg-[#EEF2FF] border border-[#E0E7FF] flex items-center justify-center active:scale-95"
-            aria-label="Solve pad"
-          >
-            <PenLine size={18} color="#4F46E5" />
-          </button>
-          <button
-            onClick={() => onFlag(currentQ)}
-            className="w-11 h-11 rounded-2xl border flex items-center justify-center active:scale-95"
-            style={{ background: flagged[currentQ] ? "#FFFBEB" : "#FAF6F0", borderColor: flagged[currentQ] ? "#FDE68A" : "#EADFD3" }}
-            aria-label="Flag question"
-          >
-            <Flag size={16} color={flagged[currentQ] ? "#7A6CB2" : "#94A3B8"} fill={flagged[currentQ] ? "#7A6CB2" : "none"} />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-bold text-[#2E2A27]" style={JK}>Q{currentQ + 1}<span className="text-[#8C8681] font-semibold"> / {questions.length}</span></span>
-          <div className="flex-1 h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
-            <div className="h-full bg-[#E67468] rounded-full transition-all" style={{ width: `${((currentQ + 1) / questions.length) * 100}%` }} />
-          </div>
-          <span className="text-[10px] font-semibold text-[#64748B] bg-[#F1F5F9] px-2.5 py-1 rounded-full">{q.subject}</span>
-        </div>
-      </div>
-
-      {/* Question + Options */}
-      <div className="flex-1 overflow-y-auto px-5 py-5">
-        <div className="text-[16px] font-semibold text-[#2E2A27] leading-relaxed mb-5" style={INTER}>
-          <MathText text={q.question} />
-        </div>
-        <div className="space-y-2.5">
-          {q.options.map((opt, i) => {
-            const sel = answers[currentQ] === i;
-            const lbl = String.fromCharCode(65 + i);
-            return (
-              <button key={i} onClick={() => onAnswer(currentQ, i)}
-                className="w-full flex items-center gap-3.5 p-4 rounded-2xl border text-left transition-all active:scale-[0.99]"
-                style={{ background: sel ? "#F5E8E7" : "white", borderColor: sel ? "#E67468" : "#EADFD3" }}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[14px] font-bold"
-                  style={{ background: sel ? "#E67468" : "#FAF6F0", color: sel ? "white" : "#8C8681", border: sel ? "none" : "1px solid #EADFD3", ...JK }}>
-                  {lbl}
-                </div>
-                <div className="text-[14px] text-[#2E2A27] leading-snug flex-1" style={INTER}>
-                  <MathText text={opt} />
-                </div>
-                {sel && (
-                  <div className="w-5 h-5 rounded-full bg-[#E67468] flex items-center justify-center flex-shrink-0">
-                    <Check size={11} color="white" strokeWidth={3} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Footer Nav */}
-      <div className="px-4 py-3 bg-white border-t border-[#EADFD3] space-y-3">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-          {questions.map((_, i) => {
-            const isAns = answers[i] !== null;
-            const isFl = flagged[i];
-            const isCur = currentQ === i;
-            return (
-              <button key={i} onClick={() => onQ(i)}
-                className="w-8 h-8 flex-shrink-0 rounded-xl text-[11px] font-bold transition-all"
-                style={{
-                  background: isCur ? "#E67468" : isFl ? "#FFFBEB" : isAns ? "#DCFCE7" : "#F1F5F9",
-                  color: isCur ? "white" : isFl ? "#92400E" : isAns ? "#15803D" : "#94A3B8",
-                  border: isFl && !isCur ? "1px solid #FDE68A" : "none",
-                  ...MONO,
-                }}>
-                {i + 1}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-2">
-          <button onClick={() => onQ(Math.max(0, currentQ - 1))} disabled={currentQ === 0}
-            className="flex-1 py-3.5 rounded-2xl border border-[#EADFD3] text-[14px] font-semibold text-[#8C8681] disabled:opacity-40 flex items-center justify-center gap-1.5" style={JK}>
-            <ChevronLeft size={16} /> Previous
-          </button>
-          {currentQ === questions.length - 1 ? (
-            <button onClick={() => onModal(true)}
-              className="flex-1 py-3.5 rounded-2xl bg-[#E67468] text-white text-[14px] font-bold flex items-center justify-center gap-1.5" style={JK}>
-              <Send size={15} /> Submit
-            </button>
-          ) : (
-            <button onClick={() => onQ(currentQ + 1)}
-              className="flex-1 py-3.5 rounded-2xl bg-[#E67468] text-white text-[14px] font-bold flex items-center justify-center gap-1.5" style={JK}>
-              Next
-              <ChevronRight size={16} />
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => onModal(true)}
-          className="w-full text-center text-[12px] font-semibold text-[#8C8681] py-1"
-          style={INTER}
-        >
-          End test early
-        </button>
-      </div>
-
-      {/* Submit Modal */}
-      {showModal && (
-        <div className="absolute inset-0 bg-black/40 flex items-end z-50">
-          <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-            className="w-full bg-white rounded-t-3xl p-6 space-y-4">
-            <div className="w-10 h-1.5 bg-[#EADFD3] rounded-full mx-auto" />
-            <h3 className="text-[20px] font-bold text-[#2E2A27] text-center" style={JK}>Submit Test?</h3>
-
-            <div className="grid grid-cols-3 gap-2.5">
-              {[
-                { label: "Answered", count: answered, bg: "#DCFCE7", fg: "#15803D" },
-                { label: "Unanswered", count: unanswered, bg: "#FEE2E2", fg: "#991B1B" },
-                { label: "Flagged", count: flaggedCount, bg: "#FFFBEB", fg: "#92400E" },
-              ].map(({ label, count, bg, fg }) => (
-                <div key={label} className="rounded-2xl p-3 text-center" style={{ background: bg }}>
-                  <p className="text-[22px] font-bold" style={{ color: fg, ...MONO }}>{count}</p>
-                  <p className="text-[11px] font-semibold mt-0.5" style={{ color: fg }}>{label}</p>
-                </div>
-              ))}
-            </div>
-
-            {unanswered > 0 && (
-              <div className="flex items-center gap-2 bg-[#FEF3C7] rounded-xl p-3">
-                <AlertTriangle size={15} color="#92400E" />
-                <p className="text-[12px] text-[#92400E]" style={INTER}>
-                  {unanswered} question{unanswered > 1 ? "s" : ""} unanswered.
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <PrimaryBtn label="Submit Test" onClick={onSubmit} />
-              <button onClick={() => onModal(false)}
-                className="w-full border border-[#EADFD3] py-3.5 rounded-2xl text-[15px] font-semibold text-[#8C8681]" style={JK}>
-                Continue Test
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {showCalc && <ExamCalculator onClose={() => setShowCalc(false)} />}
-        {showPad && (
-          <SolvePad
-            question={q.question}
-            options={q.options}
-            selected={answers[currentQ]}
-            onSelect={(i) => onAnswer(currentQ, i)}
-            onClose={() => setShowPad(false)}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function ResultsScreen({ questions, score, timeTaken, answers, nav }: {
-  questions: Q[]; score: number; timeTaken: number; answers: (number | null)[]; nav: (s: Screen) => void;
-}) {
-  const total = questions.length;
-  const percent = pct(score, total);
-  const color = sColor(percent);
-  const circumference = 2 * Math.PI * 52;
-  const dash = (percent / 100) * circumference;
-
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 pb-3 bg-white border-b border-[#EADFD3] flex items-center gap-3">
-        <BackBtn onPress={() => nav("home")} />
-        <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Test Results</h2>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-        {/* Score circle */}
-        <div className="bg-white rounded-3xl border border-[#EADFD3] p-6 flex flex-col items-center">
-          <svg width="144" height="144" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="52" fill="none" stroke="#F1F5F9" strokeWidth="10" />
-            <circle cx="60" cy="60" r="52" fill="none" stroke={color} strokeWidth="10"
-              strokeDasharray={`${dash} ${circumference}`} strokeLinecap="round"
-              transform="rotate(-90 60 60)" style={{ transition: "stroke-dasharray 1s ease" }} />
-            <text x="60" y="53" textAnchor="middle" fill="#2E2A27" fontSize="24" fontWeight="800" fontFamily="Lora, sans-serif">{percent}%</text>
-            <text x="60" y="69" textAnchor="middle" fill="#94A3B8" fontSize="12" fontFamily="Outfit, sans-serif">{score} / {total}</text>
-          </svg>
-          <span className="text-[13px] font-bold px-4 py-1.5 rounded-full mt-3" style={{ background: color + "1A", color }}>
-            {sLabel(percent)}
-          </span>
-          <p className="text-[14px] text-[#8C8681] mt-2 text-center" style={INTER}>
-            {percent >= 70 ? "Great performance! Keep it up." : percent >= 50 ? "Good effort. Review your weak areas." : "Keep practicing — you'll improve!"}
-          </p>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2.5">
-          {[
-            { label: "Correct", val: String(score), bg: "#DCFCE7", fg: "#15803D" },
-            { label: "Wrong", val: String(total - score), bg: "#FEE2E2", fg: "#EF4444" },
-            { label: "Time", val: fmt(timeTaken), bg: "#F5E8E7", fg: "#E67468" },
-          ].map(({ label, val, bg, fg }) => (
-            <div key={label} className="bg-white rounded-2xl border border-[#EADFD3] p-3 text-center">
-              <div className="w-10 h-10 rounded-xl mx-auto mb-1.5 flex items-center justify-center" style={{ background: bg }}>
-                <span className="text-[14px] font-black" style={{ color: fg, ...MONO }}>{val}</span>
-              </div>
-              <p className="text-[11px] text-[#94A3B8] font-medium">{label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Subject breakdown */}
-        <div className="bg-white rounded-2xl border border-[#EADFD3] p-4">
-          <h3 className="text-[14px] font-bold text-[#2E2A27] mb-3" style={JK}>By Subject</h3>
-          {Array.from(new Set(questions.map(q => q.subject))).map(subject => {
-            const qs = questions.filter(q => q.subject === subject);
-            const correct = qs.filter(q => answers[questions.indexOf(q)] === q.correct).length;
-            const p = pct(correct, qs.length);
-            return (
-              <div key={subject} className="flex items-center gap-3 py-2 border-b border-[#F1F5F9] last:border-0">
-                <div className="flex-1">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[12px] font-semibold text-[#374151]" style={INTER}>{subject}</span>
-                    <span className="text-[12px] font-bold" style={{ color: sColor(p), ...MONO }}>{correct}/{qs.length}</span>
-                  </div>
-                  <div className="h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${p}%`, background: sColor(p) }} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Actions */}
-        <div className="space-y-2.5">
-          <button onClick={() => nav("review-answers")}
-            className="w-full border border-[#E67468] text-[#E67468] py-4 rounded-2xl text-[15px] font-bold flex items-center justify-center gap-2" style={JK}>
-            <Eye size={18} /> Review Answers
-          </button>
-          <button onClick={() => nav("exam")}
-            className="w-full bg-[#E67468] text-white py-4 rounded-2xl text-[15px] font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20" style={JK}>
-            <RotateCcw size={18} /> Retake Test
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ReviewAnswersScreen({ questions, answers, nav }: { questions: Q[]; answers: (number | null)[]; nav: (s: Screen) => void }) {
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 pb-3 bg-white border-b border-[#EADFD3] flex items-center gap-3">
-        <BackBtn onPress={() => nav("results")} />
-        <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Review Answers</h2>
-          <p className="text-[12px] text-[#8C8681]" style={INTER}>{questions.length} questions</p>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        {questions.map((q, i) => {
-          const ua = answers[i];
-          const correct = ua === q.correct;
-          const skipped = ua === null;
-          return (
-            <div key={q.id} className="bg-white rounded-2xl border border-[#EADFD3] overflow-hidden">
-              <div className="px-4 pt-4 pb-2 flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className="text-[11px] text-[#94A3B8] font-semibold">Q{i + 1}</span>
-                    <span className="text-[10px] text-[#8C8681] px-2 py-0.5 bg-[#FAF6F0] rounded-full border border-[#EADFD3]">{q.subject}</span>
-                  </div>
-                  <div className="text-[13px] text-[#2E2A27] font-medium leading-snug" style={INTER}>
-                    <MathText text={q.question} />
-                  </div>
-                </div>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${skipped ? "bg-[#F1F5F9]" : correct ? "bg-[#DCFCE7]" : "bg-[#FEE2E2]"}`}>
-                  {skipped ? <span className="text-[10px] text-[#94A3B8] font-bold">–</span>
-                    : correct ? <Check size={13} color="#15803D" strokeWidth={2.5} />
-                      : <X size={13} color="#991B1B" strokeWidth={2.5} />}
-                </div>
-              </div>
-
-              <div className="px-4 pb-2 space-y-1.5">
-                {q.options.map((opt, j) => {
-                  const isUser = ua === j;
-                  const isRight = q.correct === j;
-                  const bg = isRight ? "#DCFCE7" : isUser ? "#FEE2E2" : "transparent";
-                  const bd = isRight ? "#86EFAC" : isUser ? "#FCA5A5" : "#F1F5F9";
-                  const fg = isRight ? "#15803D" : isUser ? "#991B1B" : "#8C8681";
-                  return (
-                    <div key={j} className="flex items-center gap-2.5 p-2.5 rounded-xl border"
-                      style={{ background: bg, borderColor: bd }}>
-                      <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0"
-                        style={{ background: isRight ? "#22C55E" : isUser ? "#EF4444" : "#FAF6F0", color: (isRight || isUser) ? "white" : "#94A3B8", ...JK }}>
-                        {String.fromCharCode(65 + j)}
-                      </span>
-                      <div className="text-[12px] leading-snug flex-1" style={{ color: fg, ...INTER }}>
-                        <MathText text={opt} />
-                      </div>
-                      {isRight && <Check size={12} color="#15803D" strokeWidth={2.5} />}
-                      {isUser && !isRight && <X size={12} color="#991B1B" strokeWidth={2.5} />}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mx-4 mb-4 p-3 rounded-xl border" style={{
-                background: q.explanation ? "#FFFBEB" : "#F8FAFC",
-                borderColor: q.explanation ? "#FDE68A" : "#E2E8F0"
-              }}>
-                <p className="text-[10px] font-bold mb-1 uppercase tracking-wide" style={{
-                  color: q.explanation ? "#92400E" : "#64748B"
-                }}>Explanation</p>
-                <p className="text-[12px] leading-relaxed" style={{
-                  color: q.explanation ? "#78350F" : "#94A3B8", ...INTER
-                }}>
-                  {q.explanation ? <MathText text={q.explanation} /> : "No explanation provided for this question."}
-                </p>
-                {q.correct == null && (
-                  <p className="text-[11px] text-[#EF4444] font-medium mt-2">
-                    * The correct answer for this question was not provided in the source material.
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
+/**
+ * What the book says about a question, in whatever form it gives it: an answer
+ * with an explanation, an answer only, or nothing at all.
+ */
 function ProfileScreen({ nav, tab, onTab, userName, userEmail, userAvatar, sessions }: {
   nav: (s: Screen) => void;
   tab: NavTab;
@@ -2883,7 +1578,7 @@ function ProfileScreen({ nav, tab, onTab, userName, userEmail, userAvatar, sessi
               </div>
               <div className="flex-1">
                 <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>Study Preferences</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Adjust your study plan and goals</p>
+                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Appearance, study plan and goals</p>
               </div>
               <ChevronRight size={16} color="#94A3B8" />
             </button>
@@ -2927,7 +1622,7 @@ function ProfileScreen({ nav, tab, onTab, userName, userEmail, userAvatar, sessi
             <span className="text-[15px] font-semibold text-[#EF4444]" style={JK}>Sign Out</span>
           </button>
 
-          <p className="text-center text-[11px] text-[#CBD5E1]" style={INTER}>PastQ v1.0.0 · Built for Nigerian students</p>
+          <p className="text-center text-[11px] text-[#CBD5E1]" style={INTER}>PastQ v1.0.0</p>
         </div>
       </div>
 
@@ -2962,7 +1657,6 @@ function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }
     <div className="h-full flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center justify-between border-b border-[#EADFD3] bg-white py-3">
         <div className="flex items-center gap-3">
-          <BackBtn onPress={() => nav("preference")} />
           <div>
             <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Edit Profile</h2>
             <p className="text-[12px] text-[#8C8681]" style={INTER}>Update your details</p>
@@ -3032,63 +1726,49 @@ function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }
   );
 }
 
-function StudyPreferencesScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [focus, setFocus] = useState("JAMB / UTME");
+function StudyPreferencesScreen({ nav, theme, onTheme }: { nav: (s: Screen) => void; theme: StudyTheme; onTheme: (theme: StudyTheme) => void }) {
+  const [focus, setFocus] = useState("Entrance exams");
   const [time, setTime] = useState("1-2");
 
   return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <BackBtn onPress={() => nav("preference")} />
-        <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Study Preferences</h2>
-          <p className="text-[12px] text-[#8C8681]" style={INTER}>Set your study plan</p>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-        <div className="space-y-3">
-          <h3 className="text-[14px] font-bold text-[#2E2A27]" style={JK}>Exam Focus</h3>
-          {["JAMB / UTME", "Post-UTME", "WAEC / NECO"].map(opt => {
-            const active = focus === opt;
-            return (
-              <button key={opt} onClick={() => setFocus(opt)}
-                className="w-full p-4 rounded-2xl border-[1.5px] flex items-center justify-between transition-all"
-                style={{ background: active ? "#F5E8E7" : "white", borderColor: active ? "#E67468" : "#EADFD3" }}>
-                <span className="text-[14px] font-semibold text-[#2E2A27]" style={JK}>{opt}</span>
-                <div className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
-                  style={{ background: active ? "#E67468" : "#F1F5F9", border: active ? "none" : "1.5px solid #EADFD3" }}>
-                  {active && <Check size={10} color="white" strokeWidth={3} />}
-                </div>
+    <main className="study-app preferences-screen">
+      <header className="study-topbar preferences-header">
+        <h1>Preferences</h1>
+      </header>
+      <div className="preferences-content">
+        <section className="preference-section">
+          <h2>Appearance</h2>
+          <p>Make this space feel right for you.</p>
+          <div className="theme-choices" role="radiogroup" aria-label="Colour theme" onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? "light" : event.key === "End" ? "dark" : theme === "light" ? "dark" : "light";
+            onTheme(next);
+            event.currentTarget.querySelectorAll<HTMLButtonElement>("button")[next === "light" ? 0 : 1]?.focus();
+          }}>
+            {(["light", "dark"] as const).map(mode => (
+              <button key={mode} role="radio" tabIndex={theme === mode ? 0 : -1} aria-checked={theme === mode} className={`theme-choice ${theme === mode ? "selected" : ""}`} onClick={() => onTheme(mode)}>
+                <span className={`theme-preview theme-preview-${mode}`} aria-hidden="true"><span className="preview-heading" /><span className="preview-line" /><span className="preview-paper"><i /><i /><b /></span></span>
+                <span className="theme-choice-label"><strong>{mode === "light" ? "Light" : "Dark"}</strong><span className="theme-radio">{theme === mode && <Check size={13} strokeWidth={3} />}</span></span>
               </button>
-            )
-          })}
-        </div>
-        <div className="space-y-3">
-          <h3 className="text-[14px] font-bold text-[#2E2A27]" style={JK}>Daily Study Goal</h3>
-          {[
-            { id: "lt1", label: "Less than 1 hour", sub: "Short daily bursts" },
-            { id: "1-2", label: "1–2 hours", sub: "Consistent practice" },
-            { id: "3-4", label: "3–4 hours", sub: "Deep study sessions" }
-          ].map(({ id, label, sub }) => {
-            const active = time === id;
-            return (
-              <button key={id} onClick={() => setTime(id)}
-                className="w-full p-4 rounded-2xl border-[1.5px] text-left transition-all"
-                style={{ background: active ? "#F5E8E7" : "white", borderColor: active ? "#E67468" : "#EADFD3" }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-semibold text-[#2E2A27]" style={JK}>{label}</span>
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center transition-all"
-                    style={{ background: active ? "#E67468" : "#F1F5F9", border: active ? "none" : "1.5px solid #EADFD3" }}>
-                    {active && <Check size={10} color="white" strokeWidth={3} />}
-                  </div>
-                </div>
-                <p className="mt-1 text-[12px] text-[#8C8681]" style={INTER}>{sub}</p>
-              </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+          <span className="preference-note">Saved automatically on this device.</span>
+        </section>
+        <section className="preference-section">
+          <h2>Exam focus</h2>
+          <div className="preference-options" role="radiogroup" aria-label="Exam focus">
+            {["Entrance exams", "Secondary school exams", "University exams", "Professional exams"].map(opt => <button key={opt} role="radio" aria-checked={focus === opt} onClick={() => setFocus(opt)}><span>{opt}</span><span className={`theme-radio ${focus === opt ? "selected" : ""}`}>{focus === opt && <Check size={13} strokeWidth={3} />}</span></button>)}
+          </div>
+        </section>
+        <section className="preference-section">
+          <h2>Daily study goal</h2>
+          <div className="preference-options" role="radiogroup" aria-label="Daily study goal">
+            {[{ id: "lt1", label: "Less than 1 hour" }, { id: "1-2", label: "1–2 hours" }, { id: "3-4", label: "3–4 hours" }].map(opt => <button key={opt.id} role="radio" aria-checked={time === opt.id} onClick={() => setTime(opt.id)}><span>{opt.label}</span><span className={`theme-radio ${time === opt.id ? "selected" : ""}`}>{time === opt.id && <Check size={13} strokeWidth={3} />}</span></button>)}
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -3116,7 +1796,6 @@ function ExamRemindersScreen({ nav }: { nav: (s: Screen) => void }) {
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <BackBtn onPress={() => nav("preference")} />
         <div>
           <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Exam Reminders</h2>
           <p className="text-[12px] text-[#8C8681]" style={INTER}>Manage reminder settings</p>
@@ -3153,7 +1832,6 @@ function AboutScreen({ nav }: { nav: (s: Screen) => void }) {
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <BackBtn onPress={() => nav("preference")} />
         <div>
           <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>About PastQ</h2>
           <p className="text-[12px] text-[#8C8681]" style={INTER}>Learn more about the app</p>
@@ -3211,7 +1889,6 @@ function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; su
   return (
     <div className="h-full flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <BackBtn onPress={() => nav(backTo)} />
         <div>
           <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>{title}</h2>
           <p className="text-[12px] text-[#8C8681]" style={INTER}>{subtitle}</p>
@@ -3241,10 +1918,10 @@ function OnboardStep({ step }: { step: number }) {
 }
 
 const EXAM_TYPES = [
-  { id: "jamb", label: "JAMB / UTME", icon: "🎯" },
-  { id: "post-utme", label: "Post-UTME", icon: "🏛️" },
-  { id: "waec", label: "WAEC / NECO", icon: "📋" },
+  { id: "entrance", label: "Entrance exams", icon: "🎯" },
+  { id: "secondary", label: "Secondary school exams", icon: "📋" },
   { id: "university", label: "University exams", icon: "🎓" },
+  { id: "professional", label: "Professional exams", icon: "🏛️" },
   { id: "other", label: "Other exam", icon: "✏️" },
 ];
 
@@ -3261,7 +1938,6 @@ function Onboard1Screen({ nav }: { nav: (s: Screen) => void }) {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center justify-between">
-        <BackBtn onPress={() => nav("splash")} />
         <OnboardStep step={1} />
         <div className="w-9" />
       </div>
@@ -3325,7 +2001,6 @@ function Onboard3Screen({ nav }: { nav: (s: Screen) => void }) {
   return (
     <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
       <div className="px-5 pt-2 flex items-center justify-between">
-        <BackBtn onPress={() => nav("onboard-2")} />
         <OnboardStep step={3} />
         <div className="w-9" />
       </div>
@@ -3512,18 +2187,28 @@ function Onboard5Screen({ nav, onComplete }: { nav: (s: Screen) => void; onCompl
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("splash");
-  const [navTab, setNavTab] = useState<NavTab>("home");
+  const [theme, setTheme] = useState<StudyTheme>(readTheme);
+  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => {
+    const syncTheme = (event: StorageEvent) => { if (event.key === THEME_STORAGE_KEY || event.key === null) setTheme(readTheme()); };
+    window.addEventListener("storage", syncTheme);
+    return () => window.removeEventListener("storage", syncTheme);
+  }, []);
+  const { screen, setScreen, tab: navTab, setTab: setNavTab } = useAppNavigation<Screen, NavTab>("splash", "home");
   const [activeQuestions, setActiveQuestions] = useState<Q[]>(DEMO_QUESTIONS);
   const [answers, setAnswers] = useState<(number | null)[]>(Array(DEMO_QUESTIONS.length).fill(null));
   const [flagged, setFlagged] = useState<boolean[]>(Array(DEMO_QUESTIONS.length).fill(false));
   const [currentQ, setCurrentQ] = useState(0);
+  const [reviewQ, setReviewQ] = useState(0);
+  const submitted = useRef(false);
+  const examDeadline = useRef<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [examDuration, setExamDuration] = useState(30 * 60);
+  // Practice reveals each answer (and the book's explanation) as soon as an option is chosen.
+  const [practiceMode, setPracticeMode] = useState(false);
   const [visionSessionId, setVisionSessionId] = useState<string | null>(null);
 
-  const [score, setScore] = useState(0);
   const [timeTaken, setTimeTaken] = useState(0);
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -3533,9 +2218,12 @@ export default function App() {
   const [offlineLibrary, setOfflineLibrary] = useState<any[]>([]);
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
   const [libraryCatalog, setLibraryCatalog] = useState<LibraryCatalog | null>(null);
+  const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
+  const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
 
   const refreshGlobalLibrary = async () => {
+    setLibraryStatus("loading");
     try {
       const [globalLib, catalog] = await Promise.all([
         getGlobalLibrary(),
@@ -3543,8 +2231,10 @@ export default function App() {
       ]);
       setGlobalLibrary(globalLib || []);
       setLibraryCatalog(catalog);
+      setLibraryStatus("ready");
     } catch (e) {
       console.warn("Library refresh failed", e);
+      setLibraryStatus("error");
     }
   };
 
@@ -3561,23 +2251,24 @@ export default function App() {
         await refreshOfflineLibrary();
       }
       if (!bundle?.questions?.length) {
-        alert("This manufacturer bundle has no questions yet.");
+        alert("This material has no questions yet.");
         return;
       }
       setCustomizeBundle({
         ...bundle,
-        examType: bundle.examType || exam.name,
-        university: bundle.university || uni.name,
-        manufacturer: bundle.manufacturer || mfg.name,
+        examType: bundle.exam?.name || bundle.examType || exam.name,
+        university: bundle.organization?.name || bundle.university || uni.name,
+        manufacturer: bundle.publisher || bundle.manufacturer || mfg.name,
       });
       setScreen("customize-cbt");
     } catch (e) {
       console.error(e);
-      alert("Could not load this manufacturer's questions. Check your connection.");
+      alert("Could not load this material. Check your connection.");
     }
   };
 
   const loadQuestions = (qs: Q[], nextScreen: Screen = "exam") => {
+    submitted.current = false;
     if (!Array.isArray(qs) || qs.length === 0) {
       alert("No questions found in this material.");
       return;
@@ -3590,6 +2281,21 @@ export default function App() {
     setTimeLeft(examDuration);
     setShowModal(false);
     setScreen(nextScreen);
+  };
+
+  const startDemo = () => {
+    submitted.current = false;
+    const questions = sortQuestions(DEMO_QUESTIONS);
+    setPracticeSource({ bundleId: "demo", version: "guided-v1" });
+    setActiveQuestions(questions);
+    setAnswers(Array(questions.length).fill(null));
+    setFlagged(Array(questions.length).fill(false));
+    setCurrentQ(0);
+    setExamDuration(5 * 60);
+    setTimeLeft(5 * 60);
+    setShowModal(false);
+    setCustomizeBundle({ id: "demo", name: "Study sampler", questions });
+    setScreen("customize-cbt");
   };
 
   const refreshOfflineLibrary = async () => {
@@ -3613,8 +2319,21 @@ export default function App() {
           questions: qs,
         });
         setScreen("customize-cbt");
+        // Background revalidation: offline copy may predate server additions.
+        // Silently upgrade if the API bundle has more questions.
+        getBundleFromApi(bundle.id)
+          .then(async (live: any) => {
+            const liveQs = Array.isArray(live?.questions) ? live.questions : [];
+            if (liveQs.length > qs.length) {
+              const saved = await saveBundle(live);
+              setCustomizeBundle({ ...saved, questions: saved.questions });
+              await refreshOfflineLibrary();
+            }
+          })
+          .catch(() => {});
         return;
       }
+      setPracticeSource({ bundleId: String(fresh.id || bundle.id), version: fresh.updatedAt || fresh.updated_at || null });
       loadQuestions(qs as Q[], "review-questions");
     } catch (e) {
       console.error(e);
@@ -3635,6 +2354,7 @@ export default function App() {
 
   useEffect(() => {
     refreshGlobalLibrary().catch(() => {});
+    refreshOfflineLibrary().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -3666,15 +2386,13 @@ export default function App() {
           const lib = await getOfflineLibrary();
           setOfflineLibrary(lib || []);
         } catch {}
-        // Fetch global library from VPS API (Supabase fallback in libraryService)
+        // Fetch global library from the Hostinger API.
         try {
           await refreshGlobalLibrary();
         } catch {}
       } else {
         setSessions([]);
         setOfflineLibrary([]);
-        setGlobalLibrary([]);
-        setLibraryCatalog(null);
         setUserName("");
         setUserEmail("");
         setUserAvatar("");
@@ -3686,11 +2404,14 @@ export default function App() {
 
   const nav = (s: Screen) => {
     if (s === "exam") {
+      submitted.current = false;
       setAnswers(Array(activeQuestions.length).fill(null));
       setFlagged(Array(activeQuestions.length).fill(false));
       setCurrentQ(0);
       setShowModal(false);
+      setTimeLeft(examDuration);
     }
+    if (s === "review-answers") setReviewQ(0);
     if (s === "home") setNavTab("home");
     if (s === "preference") setNavTab("preference");
     setScreen(s);
@@ -3702,32 +2423,60 @@ export default function App() {
     else setScreen("home");
   };
 
-  // Timer
+  // A wall-clock deadline stays accurate when a phone suspends its browser tab.
   useEffect(() => {
-    if (screen !== "exam" || timeLeft <= 0) return;
-    const id = setTimeout(() => setTimeLeft(t => t - 1), 1000);
-    return () => clearTimeout(id);
-  }, [screen, timeLeft]);
+    if (screen !== "exam") { examDeadline.current = null; return; }
+    examDeadline.current = Date.now() + timeLeft * 1000;
+    const updateTimer = () => setTimeLeft(Math.max(0, Math.ceil(((examDeadline.current || Date.now()) - Date.now()) / 1000)));
+    const id = setInterval(updateTimer, 1000);
+    document.addEventListener("visibilitychange", updateTimer);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", updateTimer); };
+  }, [screen]);
 
   useEffect(() => {
     if (screen === "exam" && timeLeft === 0) handleSubmit();
-  }, [timeLeft]);
+  }, [screen, timeLeft]);
 
 
   const handleSubmit = async () => {
-    const s = activeQuestions.filter((q, i) => q.correct != null && answers[i] === q.correct).length;
-    setScore(s);
+    if (submitted.current) return;
+    submitted.current = true;
+    const s = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] === answerIndex(q)).length;
     setTimeTaken(examDuration - timeLeft);
     setShowModal(false);
     setScreen("results");
     // Save to Supabase if user is logged in
     if (userId) {
       try {
+        const durationSeconds = examDuration - timeLeft;
+        const attempts = activeQuestions.map((question, index) => ({
+          questionKey: practiceQuestionKey(practiceSource.bundleId, question, index),
+          topicKey: question.subject || "general",
+          selectedOptionIndex: answers[index],
+          isCorrect: answerIndex(question) === null || answers[index] == null ? null : answers[index] === answerIndex(question),
+          attemptOrder: index,
+        }));
+        await savePracticeResult({
+          userId,
+          sourceBundleId: practiceSource.bundleId,
+          sourceBundleVersion: practiceSource.version,
+          durationSeconds,
+          score: s,
+          attempts,
+        });
+        // Best-effort anonymous cohort signal. Student progress is already
+        // durably stored in Supabase above; this request holds no user id.
+        void recordAnonymousAttemptSummary(attempts.map(({ questionKey, isCorrect }) => ({ questionKey, isCorrect })))
+          .catch((error) => console.warn("Anonymous recommendation summary was not recorded", error));
         await saveExamSession({
           user_id: userId,
           title: "CBT Session",
           score: s,
           total_questions: activeQuestions.length,
+          answered_count: attempts.filter((attempt) => attempt.selectedOptionIndex != null).length,
+          duration_seconds: durationSeconds,
+          source_bundle_id: practiceSource.bundleId,
+          source_bundle_version: practiceSource.version,
         });
         const history = await getUserHistory(userId);
         setSessions(history || []);
@@ -3745,10 +2494,10 @@ export default function App() {
 
   const renderScreen = () => {
     switch (screen) {
-      case "splash": return <SplashScreen nav={nav} />;
-      case "signup": return <SignUpScreen nav={nav} />;
-      case "login": return <LoginScreen nav={nav} />;
-      case "forgot-password": return <ForgotScreen nav={nav} />;
+      case "splash": return <StudyWelcome onStart={startDemo} onBrowse={() => { setScreen("home"); setNavTab("library"); }} onSignup={() => nav("signup")} onLogin={() => nav("login")} />;
+      case "signup": return <AuthScreen key="signup" mode="signup" nav={nav} />;
+      case "login": return <AuthScreen key="login" mode="login" nav={nav} />;
+      case "forgot-password": return <AuthScreen key="reset" mode="reset" nav={nav} />;
       // onboarding screens removed — users go directly to home after signup
       // case "onboard-name", "onboard-1" ... "onboard-5" all removed
       case "home": return (
@@ -3761,9 +2510,12 @@ export default function App() {
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
           libraryCatalog={libraryCatalog}
+          libraryStatus={libraryStatus}
+          onRetryLibrary={() => { void refreshGlobalLibrary(); }}
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
           onSelectManufacturer={handleSelectManufacturer}
+          onStartDemo={startDemo}
         />
       );
       case "snap": return <SnapScreen nav={nav} onSessionStarted={(id) => setVisionSessionId(id)} />;
@@ -3775,6 +2527,7 @@ export default function App() {
           onQuestionsReady={async (qs) => {
             await refreshOfflineLibrary();
             await refreshGlobalLibrary();
+            setPracticeSource({ bundleId: `vision:${visionSessionId || "draft"}`, version: null });
             loadQuestions(qs as Q[], "review-questions");
           }}
         />
@@ -3785,66 +2538,100 @@ export default function App() {
           questions={activeQuestions}
           onUpdateQuestions={setActiveQuestions}
           onStartTest={(duration, selected) => {
-            const ordered = sortQuestions(selected && selected.length ? selected : activeQuestions);
+            const ordered = sortQuestions(selected ?? activeQuestions);
+            if (!ordered.length) return;
+            setPracticeMode(false);
             setActiveQuestions(ordered);
             setAnswers(Array(ordered.length).fill(null));
             setFlagged(Array(ordered.length).fill(false));
             setCurrentQ(0);
             setExamDuration(duration);
             setTimeLeft(duration);
-            nav("exam");
+            submitted.current = false;
+            setShowModal(false);
+            setScreen("exam");
           }}
         />
       );
       case "customize-cbt": return customizeBundle ? (
         <CustomizeCbtScreen
+          key={String(customizeBundle.id || "bundle")}
           bundle={customizeBundle}
-          onBack={() => {
-            setCustomizeBundle(null);
-            nav("home");
-            setNavTab("library");
-          }}
-          onProceed={({ questions, durationSeconds }) => {
-            const ordered = sortQuestions(questions as Q[]);
-            setActiveQuestions(ordered);
-            setAnswers(Array(ordered.length).fill(null));
-            setFlagged(Array(ordered.length).fill(false));
+          onProceed={async ({ questions, durationSeconds, mode }) => {
+            setPracticeMode(mode === "practice");
+            const sourceBundleId = String(customizeBundle.id || "library");
+            // Keep the source identity through filtering, shuffling, ranking,
+            // and focused retries so progress stays attached to the question.
+            const ordered = questions.map((question, index) => {
+              const sourceIndex = customizeBundle.questions.indexOf(question);
+              return {
+                ...question,
+                practiceKey: practiceQuestionKey(sourceBundleId, question as unknown as Q, sourceIndex >= 0 ? sourceIndex : index),
+              };
+            }) as unknown as Q[];
+            let recommended = ordered;
+            if (userId && mode === "practice") {
+              try {
+                const ranked = await rankRecommendationCandidates(userId, ordered.map((question, index) => ({
+                  question,
+                  questionKey: practiceQuestionKey(sourceBundleId, question, index),
+                  topicKey: question.subject || "general",
+                })));
+                recommended = ranked.map((item) => item.question);
+              } catch (error) {
+                console.warn("Could not personalise question order", error);
+              }
+            }
+            setActiveQuestions(recommended);
+            setAnswers(Array(recommended.length).fill(null));
+            setFlagged(Array(recommended.length).fill(false));
             setCurrentQ(0);
             setExamDuration(durationSeconds);
             setTimeLeft(durationSeconds);
-            setCustomizeBundle(null);
-            nav("exam");
+            setPracticeSource({
+              bundleId: sourceBundleId,
+              version: customizeBundle.updatedAt || customizeBundle.updated_at || null,
+            });
+            submitted.current = false;
+            setShowModal(false);
+            setScreen("exam");
           }}
         />
-      ) : null;
+      ) : <PlaceholderScreen title="Material unavailable" subtitle="Return to the library and select the material again." nav={nav} backTo="home" />;
       case "exam": return (
-        <ExamScreen
+        <StudyWorkspace
           questions={activeQuestions}
           answers={answers} onAnswer={handleAnswer}
           flagged={flagged} onFlag={handleFlag}
           currentQ={currentQ} onQ={setCurrentQ}
           timeLeft={timeLeft}
+          duration={examDuration}
           showModal={showModal} onModal={setShowModal}
           onSubmit={handleSubmit} nav={nav}
+          practice={practiceMode}
         />
       );
-      case "results": return <ResultsScreen questions={activeQuestions} score={score} timeTaken={timeTaken} answers={answers} nav={nav} />;
-      case "review-answers": return <ReviewAnswersScreen questions={activeQuestions} answers={answers} nav={nav} />;
+      case "results": return <StudyResults questions={activeQuestions} timeTaken={timeTaken} answers={answers} nav={destination => { nav(destination); if (destination === "home") setNavTab("library"); }} onPracticeMissed={() => {
+        const missed = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] !== answerIndex(q));
+        if (!missed.length) return;
+        setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed });
+        setScreen("customize-cbt");
+      }} />;
+      case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={nav} review />;
       case "preference": return <ProfileScreen nav={nav} tab={navTab} onTab={handleNavTab} userName={userName} userEmail={userEmail} userAvatar={userAvatar} sessions={sessions} />;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
-      case "settings-preferences": return <StudyPreferencesScreen nav={nav} />;
+      case "settings-preferences": return <StudyPreferencesScreen nav={nav} theme={theme} onTheme={setTheme} />;
       case "settings-reminders": return <ExamRemindersScreen nav={nav} />;
       case "settings-notifications": return <PlaceholderScreen title="Notifications" subtitle="Control app alerts" nav={nav} backTo="preference" />;
       case "about": return <AboutScreen nav={nav} />;
       case "support": return <PlaceholderScreen title="Help & Support" subtitle="Get help anytime" nav={nav} backTo="preference" />;
-      default: return null;
+      default: return <PlaceholderScreen title="Page unavailable" subtitle="This screen could not be restored safely." nav={nav} backTo="home" />;
     }
   };
 
   return (
-    <div className="h-screen w-full"
-      style={{ background: "linear-gradient(160deg, #1a2f5a 0%, #0f1f42 50%, #111827 100%)" }}>
-      <div className="h-screen w-full overflow-hidden bg-[#0F172A]">
+    <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
+      <div className="h-full w-full overflow-hidden">
         {renderScreen()}
       </div>
     </div>

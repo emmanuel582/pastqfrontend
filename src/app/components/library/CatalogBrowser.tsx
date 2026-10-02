@@ -1,92 +1,35 @@
-import { ChevronRight, BookOpen } from "lucide-react";
-import type { CatalogExamType, CatalogManufacturer, CatalogUniversity } from "../../services/libraryService";
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, BookOpen, Building2, GraduationCap, Landmark, ShieldCheck } from 'lucide-react';
+import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 
-const JK = { fontFamily: "'Josefin Sans', sans-serif" };
-const INTER = { fontFamily: "'Inter', sans-serif" };
+type Filter = 'all' | 'institution' | 'exam_board' | 'professional_body';
+interface Props { catalog: LibraryCatalog; search?: string; onSelectManufacturer: (material: CatalogManufacturer, exam: CatalogExamType, organization: CatalogUniversity) => void; onFlatBrowse?: () => void; status?: 'loading' | 'ready' | 'error'; onRetry?: () => void }
+function category(type?: string): Filter { return ['university', 'polytechnic', 'college', 'school'].includes(type || '') ? 'institution' : type === 'exam_board' ? 'exam_board' : type === 'professional_body' ? 'professional_body' : 'all'; }
 
-interface CatalogBrowserProps {
-  catalog: { universities: CatalogUniversity[] };
-  onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
-  onFlatBrowse?: () => void;
+export function StudyArt({ type = 'institution' }: { type?: string }) {
+  return <svg viewBox="0 0 180 120" fill="none" className="study-art" aria-hidden="true">
+    {type === 'institution' ? <><path d="M20 101H159M31 96V45L89 18l58 27v51M30 45h118M37 91h104M46 53v30m22-30v30m22-30v30m22-30v30m22-30v30" stroke="currentColor" strokeWidth="2" /><path d="M59 42h61L89 27z" fill="currentColor" opacity=".1" /><circle cx="89" cy="35" r="3" fill="var(--study-accent)" /><path d="M25 108h130M43 88h13m9 0h13m9 0h13m9 0h13m9 0h13" stroke="currentColor" opacity=".3" /></> : type === 'exam_board' ? <><g transform="rotate(-10 85 60)"><path d="M48 17h72v90H48z" fill="currentColor" opacity=".06" /><path d="M48 17h72v90H48zM62 34h44M62 42h27M76 62h30M76 78h30M76 94h19" stroke="currentColor" strokeWidth="1.5" /><path d="m58 60 4 4 7-9m-11 22 4 4 7-9m-11 22 4 4 7-9" stroke="var(--study-accent)" strokeWidth="2" /></g><path d="m126 86 15-57 6 2-15 57-6 7z" stroke="currentColor" strokeWidth="1.5" /></> : <><path d="M43 81V48c16-8 30-8 47 0 17-8 31-8 47 0v33c-17-7-31-7-47 0-17-7-31-7-47 0zM90 48v33M43 88h94" stroke="currentColor" strokeWidth="1.5" /><circle cx="90" cy="26" r="13" stroke="var(--study-accent)" strokeWidth="1.5" /><path d="m84 26 4 4 9-10M74 15l-7-6m39 6 7-6M90 7V1" stroke="var(--study-accent)" strokeWidth="1.5" /><path d="M56 56h23m-23 8h23m23-8h23m-23 8h23" stroke="currentColor" opacity=".3" /></>}
+  </svg>;
 }
 
-export function CatalogBrowser({ catalog, onSelectManufacturer, onFlatBrowse }: CatalogBrowserProps) {
-  const universities = catalog?.universities || [];
-
-  if (!universities.length) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-        <BookOpen size={32} className="text-[#94A3B8] mb-3" />
-        <p className="text-[15px] font-semibold text-[#2E2A27]" style={JK}>No catalog yet</p>
-        <p className="text-[12px] text-[#8C8681] mt-1" style={INTER}>
-          Upload past questions — AI will organize them by university and manufacturer.
-        </p>
-        {onFlatBrowse && (
-          <button onClick={onFlatBrowse} className="mt-4 text-[13px] font-semibold text-[#E67468]" style={JK}>
-            Browse all downloads
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      {universities.map((uni) => (
-        <div key={uni.id} className="bg-white rounded-2xl border border-[#EADFD3] overflow-hidden">
-          <div className="px-4 py-3 bg-[#FAF6F0] border-b border-[#EADFD3]">
-            <p className="text-[14px] font-bold text-[#2E2A27]" style={JK}>{uni.name}</p>
-            <p className="text-[11px] text-[#8C8681]" style={INTER}>
-              {(uni.examTypes || []).length} exam type{(uni.examTypes || []).length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          {(uni.examTypes || []).map((exam) => (
-            <div key={exam.id} className="border-b border-[#EADFD3] last:border-b-0">
-              <div className="px-4 py-2 bg-white">
-                <p className="text-[12px] font-semibold text-[#7A6CB2]" style={JK}>{exam.name}</p>
-              </div>
-              <div className="px-3 pb-3 space-y-2">
-                {(exam.manufacturers || []).map((mfg) => (
-                  <ManufacturerRow
-                    key={mfg.id}
-                    mfg={mfg}
-                    onClick={() => onSelectManufacturer(mfg, exam, uni)}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
+export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onFlatBrowse, status = 'ready', onRetry }: Props) {
+  const raw = catalog.organizations?.length ? catalog.organizations : catalog.universities || [];
+  const organizations = raw.filter(org => !['general', 'unknown', 'misc', 'miscellaneous', 'unclassified'].includes(org.name.trim().toLowerCase()));
+  const [filter, setFilter] = useState<Filter>('all');
+  const [stream, setStream] = useState('all');
+  const [expanded, setExpanded] = useState(new Set<string>());
+  const needle = search.trim().toLowerCase();
+  const matches = (material: CatalogManufacturer, names: string[] = []) => (stream === 'all' || material.streams?.includes(stream)) && (!needle || [...names, material.name, material.title, ...(material.subjects || [])].some(value => value?.toLowerCase().includes(needle)));
+  const visible = useMemo(() => organizations.map(org => ({ ...org, examTypes: org.examTypes.map(exam => ({ ...exam, materials: (exam.materials || exam.manufacturers || []).filter(m => matches(m, [org.name, org.shortName || '', exam.name])) })).filter(exam => exam.materials.length > 0) })).filter(org => (filter === 'all' || category(org.type) === filter) && org.examTypes.length), [catalog, filter, stream, needle]);
+  const ungrouped = filter === 'all' ? (catalog.ungrouped || []).filter(m => matches(m)) : [];
+  const categories: { id: Filter; title: string; example: string }[] = [{ id: 'institution', title: 'Schools & universities', example: 'OAU · UI · Your school' }, { id: 'exam_board', title: 'Tests & qualifications', example: 'SAT · IELTS · And more' }, { id: 'professional_body', title: 'Professional study', example: 'Build your next chapter' }];
+  return <div className="catalog-browser"><div className="category-gallery">{categories.map((item, index) => <button key={item.id} className={`category-tile ${filter === item.id ? 'selected' : ''}`} aria-pressed={filter === item.id} onClick={() => setFilter(filter === item.id ? 'all' : item.id)}><span className="category-number">0{index + 1}</span><StudyArt type={item.id} /><span className="category-label"><strong>{item.title}</strong><small>{item.example}</small></span><ChevronRight size={19} /></button>)}</div><div className="catalog-heading"><h2>{filter === 'all' ? 'Explore the library' : categories.find(item => item.id === filter)?.title}</h2><div>{filter !== 'all' && <button className="text-button" onClick={() => setFilter('all')}>Show all</button>}<label className="track-select"><span className="sr-only">Filter by study track</span><select value={stream} onChange={e => setStream(e.target.value)}><option value="all">All tracks</option>{['science', 'arts', 'commercial', 'general'].map(track => <option key={track} value={track}>{track[0].toUpperCase() + track.slice(1)}</option>)}</select></label></div></div>
+    {visible.map(org => { const open = expanded.has(org.id) || !!needle; const Icon = org.type === 'exam_board' ? Landmark : org.type === 'professional_body' ? ShieldCheck : org.type === 'university' ? GraduationCap : Building2; return <section className="catalog-organization" key={org.id}><button className="organization-toggle" aria-expanded={open} onClick={() => setExpanded(prev => { const next = new Set(prev); next.has(org.id) ? next.delete(org.id) : next.add(org.id); return next; })}><Icon size={24} strokeWidth={1.5} /><span><strong>{org.name}</strong><small>{org.examTypes.length} collection{org.examTypes.length === 1 ? '' : 's'}</small></span>{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>{open && <div className="organization-materials">{org.examTypes.map(exam => <div key={exam.id}><h3>{exam.name}</h3>{exam.materials.map(material => <MaterialRow key={material.bundleId || material.id} material={material} onClick={() => onSelectManufacturer(material, exam, org)} />)}</div>)}</div>}</section>; })}
+    {ungrouped.length > 0 && <section className="other-materials"><h3>Other materials</h3>{ungrouped.map(material => <MaterialRow key={material.bundleId || material.id} material={material} onClick={() => onSelectManufacturer(material, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', manufacturers: [] }, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', type: 'other', examTypes: [] })} />)}</section>}
+    {!visible.length && !ungrouped.length && <div className="library-empty"><BookOpen size={28} strokeWidth={1.3} /><h3>{status === 'loading' ? 'Getting your library ready…' : status === 'error' ? 'Your library couldn’t load.' : needle || filter !== 'all' || stream !== 'all' ? 'No matching materials' : 'Your next subject belongs here.'}</h3><p>{status === 'error' ? 'Check your connection and try again.' : status === 'loading' ? '' : needle || filter !== 'all' || stream !== 'all' ? 'Try another search or category.' : 'Add a material to start your collection.'}</p>{status === 'error' && onRetry ? <button className="text-button" onClick={onRetry}>Try again<ChevronRight size={16} /></button> : status === 'ready' && onFlatBrowse ? <button className="text-button" onClick={onFlatBrowse}>Browse all materials<ChevronRight size={16} /></button> : null}</div>}
+  </div>;
 }
-
-function ManufacturerRow({ mfg, onClick }: { mfg: CatalogManufacturer; onClick: () => void }) {
-  const yearLabel =
-    mfg.yearMin && mfg.yearMax
-      ? mfg.yearMin === mfg.yearMax
-        ? String(mfg.yearMin)
-        : `${mfg.yearMin}–${mfg.yearMax}`
-      : null;
-
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-[#FAF6F0] border border-[#EADFD3] active:scale-[0.98] transition-transform text-left"
-    >
-      <div className="w-10 h-10 rounded-lg bg-[#F5E8E7] flex items-center justify-center text-lg flex-shrink-0">
-        📚
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-[#2E2A27] truncate" style={JK}>{mfg.name}</p>
-        <p className="text-[11px] text-[#8C8681]" style={INTER}>
-          {mfg.questionCount ?? 0} questions
-          {yearLabel ? ` · ${yearLabel}` : ""}
-          {mfg.subjects?.length ? ` · ${mfg.subjects.length} subjects` : ""}
-        </p>
-      </div>
-      <ChevronRight size={16} className="text-[#94A3B8] flex-shrink-0" />
-    </button>
-  );
+function MaterialRow({ material, onClick }: { material: CatalogManufacturer; onClick: () => void }) {
+  const year = material.yearMin && material.yearMax ? material.yearMin === material.yearMax ? material.yearMin : `${material.yearMin}–${material.yearMax}` : null;
+  return <button className="material-row" onClick={onClick}><BookOpen size={19} /><span><strong>{material.title || material.name}</strong><small>{[`${material.questionCount || 0} questions`, year].filter(Boolean).join(' · ')}</small></span><ChevronRight size={18} /></button>;
 }

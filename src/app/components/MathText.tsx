@@ -64,6 +64,22 @@ export function normalizeSpokenMath(raw: string): string {
   return s.replace(/\u0000MATH(\d+)\u0000/g, (_m, i: string) => blocks[Number(i)] || "");
 }
 
+/** Extracted text marks emphasised words as *word*; render them as <em>, leaving math spans untouched. */
+function fillWithEmphasis(el: HTMLElement, text: string) {
+  el.textContent = "";
+  const parts = text.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]+?\$|\*[^*\n]+?\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (part.length > 2 && part.startsWith("*") && part.endsWith("*")) {
+      const em = document.createElement("em");
+      em.textContent = part.slice(1, -1);
+      el.appendChild(em);
+    } else {
+      el.appendChild(document.createTextNode(part));
+    }
+  }
+}
+
 function renderKatex(el: HTMLElement) {
   if (!window.renderMathInElement) return false;
   try {
@@ -90,7 +106,7 @@ export const MathText: React.FC<MathTextProps> = ({ text, className, style }) =>
     const el = containerRef.current;
     if (!el) return;
 
-    el.innerText = display;
+    fillWithEmphasis(el, display);
 
     if (renderKatex(el)) return;
 

@@ -1,3 +1,6 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+@import './study.css';
+@import './study-theme.css';
+@import './auth.css';

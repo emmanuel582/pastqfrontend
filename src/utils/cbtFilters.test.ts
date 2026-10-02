@@ -5,7 +5,6 @@ import {
   getAvailableYears,
   getDefaultSelectedSubjects,
   getQuestionCountBySubject,
-  isJambStyleExam,
   yearRangeLabel,
 } from "./cbtFilters";
 
@@ -42,9 +41,16 @@ describe("cbtFilters", () => {
     expect(getAvailableYears(questions)).toEqual(["2022", "2021", "2020"]);
   });
 
-  it("detects JAMB-style exams", () => {
-    expect(isJambStyleExam("JAMB UTME")).toBe(true);
-    expect(isJambStyleExam("UI Post UTME")).toBe(false);
+  it("scopes years to selected subjects", () => {
+    expect(getAvailableYears(questions, ["Biology"])).toEqual(["2022", "2020"]);
+    expect(getAvailableYears(questions, ["Mathematics"])).toEqual(["2021", "2020"]);
+  });
+
+  it("filters single-subject bundle by multiple years", () => {
+    const biologyOnly = questions.filter((q) => q.subject === "Biology");
+    const filtered = filterCbtQuestions(biologyOnly, ["Biology"], ["2020", "2022"]);
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((q) => q.year).sort()).toEqual(["2020", "2022"]);
   });
 
   it("formats year range label", () => {
@@ -57,8 +63,8 @@ describe("cbtFilters", () => {
     expect(getDefaultSelectedSubjects({ questions: biologyOnly })).toEqual(["Biology"]);
   });
 
-  it("selects all subjects for non-JAMB multi-subject bundles", () => {
-    expect(getDefaultSelectedSubjects({ questions, examType: "Post UTME" }).sort()).toEqual(
+  it("selects all subjects by default", () => {
+    expect(getDefaultSelectedSubjects({ questions }).sort()).toEqual(
       ["Biology", "Mathematics", "Use of English"].sort()
     );
   });

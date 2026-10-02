@@ -1,5 +1,4 @@
 import localforage from "localforage";
-import { supabase } from "./supabase";
 
 localforage.config({
   name: "PastQLibrary",
@@ -7,12 +6,15 @@ localforage.config({
 });
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
-const LIBRARY_SOURCE = (import.meta.env.VITE_LIBRARY_SOURCE || "api").toLowerCase();
 
 export interface CatalogUniversity {
   id: string;
   slug: string;
   name: string;
+  shortName?: string | null;
+  type?: "university" | "polytechnic" | "college" | "school" | "exam_board" | "professional_body" | "publisher" | "other";
+  country?: string | null;
+  confidence?: number;
   examTypes: CatalogExamType[];
 }
 
@@ -20,23 +22,38 @@ export interface CatalogExamType {
   id: string;
   slug: string;
   name: string;
+  kind?: string;
   manufacturers: CatalogManufacturer[];
+  materials?: CatalogManufacturer[];
 }
 
 export interface CatalogManufacturer {
   id: string;
   slug: string;
   name: string;
+  title?: string;
+  icon?: string;
   bundleId: string;
   manufacturerSource?: string;
   yearMin?: number | null;
   yearMax?: number | null;
   questionCount?: number;
   subjects?: string[];
+  streams?: string[];
+  groupingStatus?: "grouped" | "ungrouped";
+  groupConfidence?: number;
+  educationLevel?: string | null;
+  faculty?: string | null;
+  department?: string | null;
+  programme?: string | null;
+  courseCode?: string | null;
 }
 
 export interface LibraryCatalog {
+  schemaVersion?: number;
+  organizations?: CatalogUniversity[];
   universities: CatalogUniversity[];
+  ungrouped?: CatalogManufacturer[];
   updatedAt?: string | null;
 }
 
@@ -79,12 +96,6 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function getGlobalLibraryFromSupabase() {
-  const { data, error } = await supabase.from("library_bundles").select("*");
-  if (error) throw error;
-  return (data || []).map(normalizeBundle).filter(Boolean);
-}
-
 async function getGlobalLibraryFromApi() {
   const data = await apiGet<{ bundles?: any[]; materials?: any[] }>("/api/library/bundles");
   const list = data.bundles || data.materials || [];
@@ -92,52 +103,11 @@ async function getGlobalLibraryFromApi() {
 }
 
 export const getGlobalCatalog = async (): Promise<LibraryCatalog> => {
-  try {
-    return await apiGet<LibraryCatalog>("/api/library/catalog");
-  } catch (err) {
-    console.warn("[library] catalog API failed, building flat fallback", err);
-    const bundles = await getGlobalLibrary();
-    return {
-      universities: [
-        {
-          id: "general",
-          slug: "general",
-          name: "All Materials",
-          examTypes: [
-            {
-              id: "all",
-              slug: "all",
-              name: "Past Questions",
-              manufacturers: bundles.map((b: any) => ({
-                id: b.id,
-                slug: b.id,
-                name: b.title || b.name,
-                bundleId: b.id,
-                questionCount: b.questions?.length || b.question_count || 0,
-                subjects: [...new Set((b.questions || []).map((q: any) => q.subject).filter(Boolean))],
-              })),
-            },
-          ],
-        },
-      ],
-    };
-  }
+  return apiGet<LibraryCatalog>("/api/library/catalog");
 };
 
 export const getGlobalLibrary = async () => {
-  if (LIBRARY_SOURCE === "supabase") {
-    return getGlobalLibraryFromSupabase();
-  }
-  try {
-    return await getGlobalLibraryFromApi();
-  } catch (err) {
-    console.warn("[library] API failed, falling back to Supabase", err);
-    try {
-      return await getGlobalLibraryFromSupabase();
-    } catch {
-      return [];
-    }
-  }
+  return getGlobalLibraryFromApi();
 };
 
 export const getBundleFromApi = async (bundleId: string) => {
@@ -148,20 +118,7 @@ export const getBundleFromApi = async (bundleId: string) => {
 };
 
 export const downloadBundle = async (bundleId: string) => {
-  let bundle;
-  if (LIBRARY_SOURCE === "supabase") {
-    const { data, error } = await supabase.from("library_bundles").select("*").eq("id", bundleId).single();
-    if (error) throw error;
-    bundle = normalizeBundle(data);
-  } else {
-    try {
-      bundle = await getBundleFromApi(bundleId);
-    } catch {
-      const { data, error } = await supabase.from("library_bundles").select("*").eq("id", bundleId).single();
-      if (error) throw error;
-      bundle = normalizeBundle(data);
-    }
-  }
+  const bundle = await getBundleFromApi(bundleId);
   if (!bundle) throw new Error("Bundle not found");
   await localforage.setItem(bundle.id, bundle);
   return bundle;
