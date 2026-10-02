@@ -168,6 +168,8 @@ button.material-row:hover { color: var(--study-accent); }
 .exam-session strong { font-size: 16px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exam-clock { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--study-timer); border: 1px solid var(--study-line); border-radius: 5px; font-family: 'JetBrains Mono',monospace; font-size: 16px; font-variant-numeric: tabular-nums; color: var(--study-ink); flex-shrink: 0; }
 .exam-clock svg { color: var(--study-accent); }
+.study-app .exam-complete { min-height: 44px; font-family: 'JetBrains Mono',monospace; }
+.exam-complete:hover { border-color: var(--study-accent); background: var(--study-control); }
 .exam-clock.time-low { border-color: var(--study-accent); }
 .exam-clock.time-low { color: var(--study-accent); }
 .exam-finish { min-height: 40px; padding: 8px 15px; font-size: 12px !important; }
