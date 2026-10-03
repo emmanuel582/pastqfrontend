@@ -3,7 +3,7 @@ import MathText from "./components/MathText";
 import { useAppNavigation } from "./useAppNavigation";
 import { AuthScreen } from "./components/auth/AuthScreen";
 import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
-import HiroseLoadingPet, { type HiroseState } from "./components/HiroseLoadingPet";
+import ProcessingScreen from "./components/ProcessingScreen";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Camera, Upload, Home, Clock, User,
@@ -29,14 +29,9 @@ import {
   uploadSessionPages,
   uploadSessionPdf,
   extractVisionText,
-  getVisionSession,
-  resumeVisionSession,
   startVisionSession,
-  cancelVisionSession,
-  replyVisionFollowUp,
   sortUploadFiles,
   type VisionSession,
-  type VisionFollowUp,
 } from "../services/vision";
 
 type Screen =
@@ -155,18 +150,6 @@ const sLabel = (p: number) =>
 const JK = { fontFamily: "'Lora', sans-serif" };
 const MONO = { fontFamily: "'JetBrains Mono', monospace" };
 const INTER = { fontFamily: "'Outfit', sans-serif" };
-
-const HIROSE_PROCESSING_PHASES: Array<{ state: HiroseState; text: string; sub: string }> = [
-  { state: "idle", text: "Preparing your paper", sub: "Getting each page ready for inspection" },
-  { state: "review", text: "Scanning your paper", sub: "Identifying text regions" },
-  { state: "review", text: "Reading every page", sub: "OCR is preserving questions and options" },
-  { state: "running", text: "Extracting questions", sub: "Grouping by year & paper" },
-  { state: "run-right", text: "Structuring into CBT format", sub: "Stitching continued pages" },
-  { state: "run-left", text: "Cross-checking the paper", sub: "Comparing answer choices and page order" },
-  { state: "waiting", text: "Checking patterns", sub: "Looking for missing pages" },
-  { state: "waving", text: "Finishing the review", sub: "Confirming your practice set is coherent" },
-  { state: "jumping", text: "Almost there!", sub: "Polishing your question bank" },
-];
 
 // ── Shared Components ─────────────────────────────────────────────────────────
 
@@ -818,345 +801,6 @@ function ManualEntryScreen({
         >
           Process Questions
         </button>
-      </div>
-    </div>
-  );
-}
-
-function ProcessingScreen({
-  nav,
-  sessionId,
-  onQuestionsReady,
-}: {
-  nav: (s: Screen) => void;
-  sessionId: string | null;
-  onQuestionsReady: (questions: any[], meta?: { groups?: any[]; name?: string; sessionId?: string }) => void;
-}) {
-  const [phase, setPhase] = useState(0);
-  const [dots, setDots] = useState("");
-  const [session, setSession] = useState<VisionSession | null>(null);
-  const [busyFu, setBusyFu] = useState<string | null>(null);
-  const [connectionError, setConnectionError] = useState(false);
-  const doneRef = useRef(false);
-
-  const facts = [
-    "Smart grouping keeps 2026 Paper A separate from Paper B.",
-    "Continued questions across pages are stitched automatically.",
-    "Answer keys are matched separately so stems stay clean.",
-    "If a year looks short vs the pattern, PastQ will ask you.",
-    "Unclear photos pause that page — the rest keeps going.",
-    "Failed pages auto-retry so a mid-book glitch won't kill the job.",
-  ];
-
-  useEffect(() => {
-    const t = setInterval(() => setPhase((p) => (p + 1) % HIROSE_PROCESSING_PHASES.length), 4000);
-    const d = setInterval(() => setDots((v) => (v.length >= 3 ? "" : v + ".")), 500);
-    return () => {
-      clearInterval(t);
-      clearInterval(d);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    let active = true;
-    doneRef.current = false;
-
-    const finish = async (s: VisionSession) => {
-      if (doneRef.current || !active) return;
-      doneRef.current = true;
-      const qs = s.questions || [];
-      const bundle = {
-        id: s.id,
-        title: s.name || "Extracted Material",
-        name: s.name || "Extracted Material",
-        icon: "📖",
-        questions: qs,
-        groups: s.groups || [],
-        updatedAt: Date.now(),
-        createdAt: Date.now(),
-      };
-      try {
-        await saveBundle(bundle);
-      } catch {}
-      onQuestionsReady(qs, { groups: s.groups, name: s.name, sessionId: s.id });
-    };
-
-    const poll = async () => {
-      try {
-        const s = await getVisionSession(sessionId);
-        if (!active) return;
-        setConnectionError(false);
-        setSession(s);
-        if (s.status === "completed" || s.status === "completed_with_errors") {
-          await finish(s);
-          return;
-        }
-        if (s.status === "failed" && !(s.questions || []).length) {
-          alert("Extraction failed. You can retry from Snap.");
-          nav("snap");
-        }
-      } catch (err) {
-        console.error(err);
-        if (active) setConnectionError(true);
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [sessionId, nav, onQuestionsReady]);
-
-  const progress = session?.progress;
-  const total = progress?.total || 0;
-  const done = (progress?.done || 0) + (progress?.skipped || 0);
-  const pctDone = total ? Math.min(99, Math.round((done / total) * 100)) : 0;
-  const followUps = (session?.followUps || []).filter((f) => f.status === "open");
-
-  if (!sessionId) {
-    return (
-      <div className="h-full flex items-center justify-center bg-[#FAF6F0] px-6">
-        <div className="w-full max-w-sm rounded-3xl bg-white border border-[#EADFD3] p-6 text-center shadow-sm">
-          <AlertTriangle className="mx-auto text-[#E67468]" size={32} />
-          <h2 className="mt-3 text-[19px] font-bold text-[#2E2A27]" style={JK}>No extraction to display</h2>
-          <p className="mt-2 text-[13px] text-[#8C8681]" style={INTER}>The upload session was lost or has not started. Your existing library is safe.</p>
-          <button onClick={() => nav("snap")} className="mt-5 w-full py-3 rounded-2xl bg-[#E67468] text-white font-bold">Return to upload</button>
-        </div>
-      </div>
-    );
-  }
-
-  const handleDismiss = async (fu: VisionFollowUp) => {
-    if (!sessionId) return;
-    setBusyFu(fu.id);
-    try {
-      const s = await replyVisionFollowUp(sessionId, { followUpId: fu.id, action: "dismiss" });
-      setSession(s);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setBusyFu(null);
-    }
-  };
-
-  const handleAttachClearer = async (fu: VisionFollowUp) => {
-    if (!sessionId) return;
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setBusyFu(fu.id);
-      try {
-        const s = await replyVisionFollowUp(sessionId, {
-          followUpId: fu.id,
-          action: "replace_page",
-          image: file,
-        });
-        setSession(s);
-      } catch (err) {
-        console.error(err);
-        alert("Could not upload clearer page.");
-      } finally {
-        setBusyFu(null);
-      }
-    };
-    input.click();
-  };
-
-  const handleCancel = async () => {
-    if (!sessionId) {
-      nav("snap");
-      return;
-    }
-    if (window.confirm("Are you sure you want to cancel this extraction?")) {
-      await cancelVisionSession(sessionId);
-      nav("snap");
-    }
-  };
-
-  const handleResume = async () => {
-    if (!sessionId) return;
-    try {
-      const s = await resumeVisionSession(sessionId);
-      setSession(s);
-      doneRef.current = false;
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // paused = provider key/credit problem; needs_attention = a step could not be
-  // completed and is waiting for a resume. Both need the user, like needs_input.
-  const waitingForUser = ["needs_input", "paused", "needs_attention"].includes(session?.status || "");
-  const hiroseState: HiroseState = session?.status === "failed"
-    ? "failed"
-    : waitingForUser
-      ? "waiting"
-      : HIROSE_PROCESSING_PHASES[phase].state;
-
-  return (
-    <div className="h-full flex flex-col items-center justify-center bg-[#FAF6F0] relative overflow-hidden">
-      <motion.div
-        animate={{ scale: [1, 1.3, 1], opacity: [0.12, 0.25, 0.12] }}
-        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -top-32 -left-32 w-96 h-96 bg-gradient-to-br from-[#E67468] to-[#D45B4F] rounded-full blur-[140px]"
-      />
-      <motion.div
-        animate={{ scale: [1, 1.4, 1], opacity: [0.08, 0.2, 0.08] }}
-        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute -bottom-32 -right-32 w-96 h-96 bg-gradient-to-br from-[#7A6CB2] to-[#5B4E94] rounded-full blur-[140px]"
-      />
-
-      <div className="relative z-10 flex flex-col items-center px-6 w-full max-w-sm">
-        <motion.div
-          key={phase}
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", damping: 14, stiffness: 100 }}
-          className="relative"
-        >
-          <HiroseLoadingPet state={hiroseState} size="lg" label={`Hirose ${hiroseState.replace("-", " ")} while PastQ processes your material`} />
-        </motion.div>
-
-        <motion.h2
-          key={"t" + phase}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-[20px] font-bold text-[#2E2A27] text-center mt-2"
-          style={JK}
-        >
-          {waitingForUser ? (session?.status === "paused" ? "Paused — action needed" : "Needs your input") : HIROSE_PROCESSING_PHASES[phase].text}
-          {!waitingForUser ? dots : ""}
-        </motion.h2>
-        <motion.p
-          key={"s" + phase}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-[13px] text-[#8C8681] text-center mt-1 mb-3"
-          style={INTER}
-        >
-          {session?.memory?.activeYear
-            ? `Reading ${session.memory.activeYear}${session.memory.activePaper ? " · Paper " + session.memory.activePaper : ""}`
-            : HIROSE_PROCESSING_PHASES[phase].sub}
-        </motion.p>
-
-        <div className="w-full mb-2">
-          <div className="flex justify-between text-[11px] text-[#8C8681] mb-1" style={INTER}>
-            <span>
-              {total ? `${done}/${total} pages` : session ? "Waiting for pages…" : "Connecting to backend…"}
-              {progress?.failed ? ` · ${progress.failed} failed` : ""}
-            </span>
-            <span>{pctDone}%</span>
-          </div>
-          <div className="w-full h-[5px] bg-[#EADFD3] rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${pctDone}%`,
-                background: "linear-gradient(90deg, #E67468, #7A6CB2)",
-              }}
-            />
-          </div>
-        </div>
-
-        {connectionError && (
-          <div className="w-full mb-3 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5" role="status">
-            <p className="text-[12px] font-semibold text-[#991B1B]">Connection interrupted</p>
-            <p className="text-[11px] text-[#B91C1C] mt-0.5">Reconnecting automatically. Processing continues on Hostinger.</p>
-          </div>
-        )}
-
-        {!!session?.pages?.length && (
-          <div className="w-full mb-3">
-            <div className="grid grid-cols-8 gap-1.5 max-h-20 overflow-y-auto" aria-label="Page processing status">
-              {session.pages.map((page) => {
-                const needsReview = page.imageQuality?.requiresHumanReview;
-                const color = page.status === "done" ? "#22C55E" : page.status === "processing" ? "#7A6CB2" : page.status === "failed" ? "#EF4444" : page.status === "needs_input" ? "#F59E0B" : "#D6CEC5";
-                return (
-                  <div
-                    key={page.id}
-                    title={`Page ${page.index + 1}: ${page.status}${needsReview ? " · review required" : ""}`}
-                    className="aspect-square rounded-md flex items-center justify-center text-[9px] font-bold bg-white"
-                    style={{ color, border: `2px solid ${needsReview ? "#F59E0B" : color}` }}
-                  >
-                    {page.index + 1}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {!!(session?.groups || []).length && (
-          <p className="text-[11px] text-[#5C5550] mb-3 text-center" style={INTER}>
-            {(session!.groups || []).slice(0, 4).map((g) => `${g.year}${g.paper && g.paper !== "Default" ? " " + g.paper : ""} (${g.count})`).join(" · ")}
-            {(session!.groups || []).length > 4 ? "…" : ""}
-          </p>
-        )}
-
-        {followUps.length > 0 && (
-          <div className="w-full max-h-40 overflow-y-auto space-y-2 mb-3">
-            {followUps.slice(0, 3).map((fu) => (
-              <div key={fu.id} className="bg-white/90 border border-[#EADFD3] rounded-2xl p-3">
-                <p className="text-[12px] text-[#2E2A27] leading-snug mb-2" style={INTER}>{fu.message}</p>
-                <div className="flex gap-2">
-                  {(fu.type === "unclear_image" || fu.type === "missing_questions" || fu.type === "missing_question_numbers" || fu.type === "count_anomaly") && (
-                    <button
-                      disabled={busyFu === fu.id}
-                      onClick={() => handleAttachClearer(fu)}
-                      className="flex-1 py-2 rounded-xl text-[11px] font-bold bg-[#E67468] text-white"
-                    >
-                      {fu.type === "unclear_image" ? "Upload clearer" : "Add missing page"}
-                    </button>
-                  )}
-                  {fu.type !== "unclear_image" && (
-                    <button
-                      disabled={busyFu === fu.id}
-                      onClick={() => handleDismiss(fu)}
-                      className="px-3 py-2 rounded-xl text-[11px] font-bold bg-[#FAF6F0] text-[#8C8681]"
-                    >
-                      Dismiss
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {((progress?.failed || 0) > 0 || waitingForUser) && (
-          <button onClick={handleResume} className="mb-3 px-4 py-2 rounded-xl text-[12px] font-bold bg-[#7A6CB2] text-white">
-            {(progress?.failed || 0) > 0 ? "Retry failed pages" : "Resume"}
-          </button>
-        )}
-
-        {(session?.questions || []).length > 0 && (waitingForUser || session?.status === "completed_with_errors") && (
-          <button
-            onClick={() => onQuestionsReady(session!.questions || [], { groups: session!.groups, name: session!.name, sessionId: session!.id })}
-            className="mb-3 px-4 py-2 rounded-xl text-[12px] font-bold border border-[#EADFD3] text-[#2E2A27] bg-white"
-          >
-            Continue with {(session!.questions || []).length} questions
-          </button>
-        )}
-
-        <button
-          onClick={handleCancel}
-          className="mb-4 px-4 py-1.5 rounded-xl text-[12px] font-medium text-[#8C8681] hover:text-[#E67468] hover:bg-[#FBEAE8] transition-colors"
-          style={INTER}
-        >
-          ✕ Cancel extraction
-        </button>
-
-        <motion.div key={"f" + phase} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }} className="text-center mb-5">
-          <p className="text-[11px] font-semibold text-[#E67468] uppercase tracking-widest mb-1" style={JK}>Did you know?</p>
-          <p className="text-[12px] text-[#5C5550] leading-relaxed" style={INTER}>{facts[phase]}</p>
-        </motion.div>
       </div>
     </div>
   );
@@ -2205,7 +1849,7 @@ export default function App() {
   const [showModal, setShowModal] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [examDuration, setExamDuration] = useState(30 * 60);
-  // Practice reveals each answer (and the book's explanation) as soon as an option is chosen.
+  // Answers remain hidden until the session is submitted.
   const [practiceMode, setPracticeMode] = useState(false);
   const [visionSessionId, setVisionSessionId] = useState<string | null>(null);
 
@@ -2524,11 +2168,11 @@ export default function App() {
         <ProcessingScreen
           nav={nav}
           sessionId={visionSessionId}
-          onQuestionsReady={async (qs) => {
-            await refreshOfflineLibrary();
-            await refreshGlobalLibrary();
+          onQuestionsReady={(qs) => {
             setPracticeSource({ bundleId: `vision:${visionSessionId || "draft"}`, version: null });
             loadQuestions(qs as Q[], "review-questions");
+            // Open the prepared material immediately while the library refreshes.
+            void Promise.all([refreshOfflineLibrary(), refreshGlobalLibrary()]);
           }}
         />
       );
