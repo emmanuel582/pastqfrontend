@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveBundle } from '../../services/libraryService';
-import { cancelVisionSession, getVisionSession, replyVisionFollowUp, resumeVisionSession, type VisionFollowUp, type VisionSession } from '../../services/vision';
+import { getVisionSession, replyVisionFollowUp, resumeVisionSession, type VisionFollowUp, type VisionSession } from '../../services/vision';
 import StudyLoading from './StudyLoading';
 
 type QuestionMeta = { groups?: any[]; name?: string; sessionId?: string };
@@ -35,7 +35,7 @@ export default function ProcessingScreen({ nav, sessionId, onQuestionsReady }: {
               questions: current.questions, groups: current.groups || [], updatedAt: Date.now(), createdAt: Date.now() });
           } catch { /* Continue to the available questions even if device storage is full. */ }
           if (!active) return;
-          const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 850;
+          const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 2600;
           finishTimer = setTimeout(() => {
             if (active) void callbacks.current.onQuestionsReady(current.questions || [],
               { groups: current.groups, name: current.name, sessionId: current.id });
@@ -82,8 +82,7 @@ export default function ProcessingScreen({ nav, sessionId, onQuestionsReady }: {
     : failed ? 'Your material is saved. Try preparing it again.'
     : waiting && !followUps.length ? 'Preparation is paused. Try again when you’re ready.' : undefined);
 
-  return <StudyLoading state={state} name={session?.name} progress={ready ? 100 : fraction} message={message}
-    onCancel={() => { if (!busy && window.confirm('Cancel preparation?')) void act('cancel', async () => { await cancelVisionSession(sessionId); callbacks.current.nav('snap'); }); }}>
+  return <StudyLoading state={state} name={session?.name} progress={ready ? 100 : fraction} message={message}>
     {followUps.length > 0 && !ready && <div className="loading-followups">{followUps.map(item => {
       const page = session?.pages?.find(p => p.id === item.pageId);
       const unclear = item.type === 'unclear_image';

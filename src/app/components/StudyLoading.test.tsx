@@ -20,13 +20,13 @@ describe('student loading screen', () => {
     expect(renderToStaticMarkup(<StudyLoading progress={-3} />)).toContain('aria-valuenow="0"');
   });
   it('shows actionable paused states without an animated progress indicator', () => {
-    const html = renderToStaticMarkup(<StudyLoading state="waiting" onCancel={() => {}}><button>Add clearer photo</button></StudyLoading>);
+    const html = renderToStaticMarkup(<StudyLoading state="waiting"><button>Add clearer photo</button></StudyLoading>);
     expect(html).toContain('Add clearer photo');
-    expect(html).toContain('Cancel');
+    expect(html).not.toContain('Cancel');
     expect(html).not.toContain('role="progressbar"');
   });
   it('celebrates completion without offering cancellation or showing empty action space', () => {
-    const html = renderToStaticMarkup(<StudyLoading state="ready" progress={100} onCancel={() => {}}>{false}</StudyLoading>);
+    const html = renderToStaticMarkup(<StudyLoading state="ready" progress={100}>{false}</StudyLoading>);
     expect(html).toContain('--scholar-row:4');
     expect(html).toContain('aria-valuenow="100"');
     expect(html).not.toContain('loading-cancel');

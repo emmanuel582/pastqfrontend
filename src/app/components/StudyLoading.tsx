@@ -7,15 +7,15 @@ const titles: Record<LoadingState, string> = {
   waiting: 'A little help,\nthen we’re ready.', interrupted: 'We’ll pick up\nwhere we left off.',
   failed: 'Let’s give it\nanother try.', empty: 'Ready for\nyour next material.',
 };
-export default function StudyLoading({ state = 'preparing', name, progress, message, children, onCancel, compact = false }: {
+export default function StudyLoading({ state = 'preparing', name, progress, message, children, compact = false }: {
   state?: LoadingState; name?: string; progress?: number | null; message?: string;
-  children?: ReactNode; onCancel?: () => void; compact?: boolean;
+  children?: ReactNode; compact?: boolean;
 }) {
   const value = progress == null || !Number.isFinite(progress) ? null : Math.max(0, Math.min(100, progress));
   const paused = ['waiting', 'interrupted', 'failed', 'empty'].includes(state);
   const hasActions = Children.toArray(children).length > 0;
   const pose: ScholarState = state === 'ready' ? 'celebrate' : state === 'failed' ? 'encourage'
-    : paused ? 'waiting' : value !== null && value >= 85 ? 'thinking' : 'study';
+    : paused ? 'waiting' : 'study';
   if (compact) return <div className="study-inline-loading" role="status" aria-live="polite">
     <ScholarMascot compact /><p>{message || 'Opening your library…'}</p>
     <div className="study-loading-track is-indeterminate" aria-hidden="true"><span /></div>
@@ -33,7 +33,6 @@ export default function StudyLoading({ state = 'preparing', name, progress, mess
         </div>}
         {message && <p className="loading-message" role="status">{message}</p>}
         {hasActions && <div className="loading-actions">{children}</div>}
-        {onCancel && state !== 'ready' && <button type="button" className="loading-cancel" onClick={onCancel}>Cancel</button>}
       </div>
     </div>
   </main>;

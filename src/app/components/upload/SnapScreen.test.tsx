@@ -24,6 +24,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('isSecureContext', true);
+  vi.stubGlobal('URL', class extends URL { static createObjectURL = vi.fn(() => 'blob:page-preview'); static revokeObjectURL = vi.fn(); });
   getUserMedia = vi.fn().mockResolvedValue(stream);
   vi.stubGlobal('navigator', { userAgent: 'Android 14', mediaDevices: { getUserMedia } });
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
@@ -74,6 +75,9 @@ describe('camera and upload interactions', () => {
     const draft = draftChanged.mock.lastCall?.[0];
     expect(draft.files[0].type).toBe('image/jpeg');
     expect(draft.files[0].size).toBeGreaterThan(0);
+    expect(container.querySelector('.upload-file-preview img')?.getAttribute('src')).toBe('blob:page-preview');
+    await click(`Remove ${draft.files[0].name}`);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:page-preview');
   });
   it('offers the native phone camera after permission denial without a simulated preview', async () => {
     getUserMedia.mockRejectedValue(new DOMException('Denied', 'NotAllowedError'));

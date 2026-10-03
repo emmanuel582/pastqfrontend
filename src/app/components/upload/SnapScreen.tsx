@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Camera, FileText, Plus, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowRight, BookOpen, Camera, FileText, Plus, Upload, X } from 'lucide-react';
 import { supabase } from '../../../services/supabase';
 import { uploadMaterial, type MaterialUploadProgress } from '../../../services/materialUpload';
 import { classifyMaterialFiles, isPhoneCameraDevice, MATERIAL_ACCEPT } from '../../../utils/materialFiles';
@@ -7,6 +7,32 @@ import { sortUploadFiles } from '../../../services/vision';
 import ScholarMascot from '../ScholarMascot';
 
 export type UploadDraft = { files: File[]; name: string };
+
+function PaperIllustration() {
+  return <svg className="upload-paper-art" viewBox="0 0 180 168" fill="none" aria-hidden="true">
+    <rect x="40" y="26" width="100" height="126" rx="4" transform="rotate(-10 40 26)" fill="var(--study-control)" stroke="var(--study-line)" />
+    <rect x="57" y="13" width="100" height="132" rx="4" transform="rotate(6 57 13)" fill="var(--study-bg)" stroke="var(--study-art-ink)" strokeOpacity=".5" />
+    <g transform="rotate(6 57 13)">
+      <path d="M74 36h47" stroke="var(--study-ink)" strokeWidth="3" strokeLinecap="round" />
+      <path d="M74 47h30M74 66h65M74 73h51M74 99h65M74 106h45" stroke="var(--study-art-ink)" strokeOpacity=".4" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="78" cy="85" r="3" stroke="var(--study-art-ink)" strokeOpacity=".5" /><circle cx="93" cy="85" r="3" stroke="var(--study-accent)" />
+      <path d="M78 120h45" stroke="var(--study-art-ink)" strokeOpacity=".35" strokeWidth="2" strokeLinecap="round" />
+    </g>
+    <path d="m26 128 21 21 45-47" stroke="var(--study-accent)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>;
+}
+
+function FilePreview({ file }: { file: File }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return;
+    const objectUrl = URL.createObjectURL(file); setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return <span className="upload-file-preview">{url ? <img src={url} alt="" onError={() => setUrl('')} /> : <FileText size={20} strokeWidth={1.4} />}</span>;
+}
+
+function fileSize(bytes: number) { return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`; }
 
 export default function SnapScreen({ nav, onSessionStarted, draft, onDraftChange }: {
   nav: (screen: 'manual-entry' | 'processing' | 'login') => void;
@@ -142,20 +168,16 @@ export default function SnapScreen({ nav, onSessionStarted, draft, onDraftChange
   }
 
   return <main className="study-app upload-screen">
-    <header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><span className="upload-page-label">Add material</span></header>
+    <header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><span className="upload-page-label">Add questions</span></header>
     <input ref={fileRef} className="upload-file-input" type="file" aria-label="Choose material files" accept={MATERIAL_ACCEPT} multiple disabled={uploading} onChange={choose} />
     <input ref={captureRef} className="upload-file-input" type="file" aria-label="Take a photo with your phone camera" accept="image/*" capture="environment" disabled={uploading} onChange={choose} />
     <div className="upload-layout">
-      <section className="upload-intro"><h1>Your material.<br />Your next step.</h1><p>{phone ? 'Take a clear photo of your question paper, or choose a file.' : 'Please upload your question paper, or use your phone to take a photo.'}</p>
-        {phone && <button className="study-primary upload-camera-button" onClick={() => void openCamera()} disabled={cameraStarting || uploading}><Camera size={19} />{cameraStarting ? 'Opening camera…' : 'Take a photo'}</button>}
-        <button className="text-button upload-text-link" disabled={uploading} onClick={() => nav('manual-entry')}><BookOpen size={18} />Paste questions instead</button>
-        {cameraError && !cameraOpen && <div className="upload-camera-help"><p role="alert">{cameraError}</p><button className="study-secondary" onClick={() => captureRef.current?.click()}>Use phone camera</button></div>}
-      </section>
-      <section className={`upload-material ${dragging ? 'is-dragging' : ''}`} aria-label="Your material" onDragOver={e => { e.preventDefault(); if (!uploading) setDragging(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }} onDrop={drop}>
-        {!files.length ? <div className="upload-empty"><Upload size={36} strokeWidth={1.3} /><h2>{phone ? 'Photos or files.' : 'Drop your files here.'}</h2><p>Photos, PDF or text</p><button className="study-primary" onClick={() => fileRef.current?.click()}><Plus size={18} />Choose files</button></div> : <>
+      <section className="upload-intro"><h1>Turn your paper<br />into practice.</h1><p>{phone ? 'A photo, a file, a fresh start.' : 'Please upload your question paper, or use your phone to take a photo.'}</p></section>
+      <section className={`upload-material ${files.length ? 'has-files' : ''} ${dragging ? 'is-dragging' : ''}`} aria-label="Your material" onDragOver={e => { e.preventDefault(); if (!uploading) setDragging(true); }} onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false); }} onDrop={drop}>
+        {!files.length ? <div className="upload-empty"><PaperIllustration /><div className="upload-empty-content"><h2>{dragging ? 'Drop it here.' : 'Bring your questions.'}</h2><p>Photos, PDF or text</p><button className="study-primary" onClick={() => fileRef.current?.click()}><Upload size={18} />Choose files<ArrowRight size={18} /></button><span className="upload-drop-note">{phone ? 'Select one page or a whole paper.' : 'Or drag your files into this space.'}</span></div></div> : <>
           <label className="upload-name">Material name<input placeholder="e.g. Chemistry revision" value={name} disabled={uploading} onChange={e => setName(e.target.value)} /></label>
           <div className="upload-selection-heading"><h2>{files.length} file{files.length === 1 ? '' : 's'} selected</h2><button className="text-button" disabled={uploading} onClick={() => fileRef.current?.click()}><Plus size={16} />Add files</button></div>
-          <ol className="upload-file-list">{files.map((file, index) => <li key={`${file.name}-${index}`}><span className="upload-file-number">{index + 1}</span><FileText size={19} /><span className="upload-filename" title={file.name}>{file.name}</span><div>
+          <ol className="upload-file-list">{files.map((file, index) => <li key={`${file.name}-${index}`}><span className="upload-file-number">{String(index + 1).padStart(2, '0')}</span><FilePreview file={file} /><span className="upload-file-info"><span className="upload-filename" title={file.name}>{file.name}</span><span className="upload-file-size">{fileSize(file.size)}</span></span><div className="upload-file-actions">
             <button className="icon-button" aria-label={`Move ${file.name} up`} disabled={uploading || index === 0} onClick={() => move(index, -1)}><ArrowUp size={16} /></button>
             <button className="icon-button" aria-label={`Move ${file.name} down`} disabled={uploading || index === files.length - 1} onClick={() => move(index, 1)}><ArrowDown size={16} /></button>
             <button className="icon-button" aria-label={`Remove ${file.name}`} disabled={uploading} onClick={() => setFiles(current => current.filter((_, i) => i !== index))}><X size={17} /></button>
@@ -165,6 +187,11 @@ export default function SnapScreen({ nav, onSessionStarted, draft, onDraftChange
           <button className="study-primary upload-submit" disabled={uploading} onClick={() => void submit()}>{uploading ? 'Uploading…' : 'Prepare questions'}<Upload size={18} /></button>
         </>}
       </section>
+      {!uploading && <div className="upload-alternatives">
+        {phone && <button className="upload-alternative" onClick={() => void openCamera()} disabled={cameraStarting}><Camera size={21} strokeWidth={1.5} /><span>{cameraStarting ? 'Opening camera…' : 'Take a photo'}</span><ArrowRight size={18} /></button>}
+        <button className="upload-alternative" onClick={() => nav('manual-entry')}><BookOpen size={21} strokeWidth={1.5} /><span>Paste questions instead</span><ArrowRight size={18} /></button>
+      </div>}
+      {cameraError && !cameraOpen && <div className="upload-camera-help"><p role="alert">{cameraError}</p><button className="study-secondary" onClick={() => captureRef.current?.click()}>Use phone camera</button></div>}
     </div>
     {cameraOpen && <section className="upload-camera-view" role="dialog" aria-modal="true" aria-label="Question paper camera"><video ref={videoRef} autoPlay playsInline muted onError={() => { closeCamera(); setCameraError('The preview could not open. Use your phone’s camera or choose a photo.'); }} onLoadedData={() => { if (videoRef.current?.videoWidth) setCameraReady(true); }} /><header><button className="camera-close" aria-label="Close camera" onClick={closeCamera}><X size={22} /></button></header><div className="camera-controls"><p>{cameraError || 'Keep the whole page in view.'}</p><button className="camera-shutter" aria-label="Take photo" disabled={!cameraReady || capturing} onClick={capturePhoto}><span /></button></div></section>}
   </main>;
