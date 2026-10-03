@@ -7,7 +7,7 @@ import ProcessingScreen from "./components/ProcessingScreen";
 import SnapScreen, { type UploadDraft } from "./components/upload/SnapScreen";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Camera, Upload, Home, Clock, User,
+  Camera, Upload, Home, Clock, User, Monitor,
   Flag, Check, X, Eye, RotateCcw, Edit2,
   Bell, LogOut, AlertTriangle, BookOpen,
   ChevronRight, Plus, FileText, Shield, Star, Info, Twitter, Github, Library, Search, Download,
@@ -20,7 +20,7 @@ import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, 
 import { StudyHome, StudyLibrary, StudyWelcome, StudyProgress } from "./components/library/StudyLibrary";
 import { StudyWorkspace, StudyResults } from "./components/cbt/StudyWorkspace";
 import { answerIndex } from "../utils/examSession";
-import { readTheme, applyTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
+import { readTheme, followTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
 import { CustomizeCbtScreen } from "./components/cbt/CustomizeCbtScreen";
 import { isCbtQuestion, customDurationSeconds } from "../utils/cbtFilters";
 import { supabase } from "../services/supabase";
@@ -1009,18 +1009,21 @@ function StudyPreferencesScreen({ nav, theme, onTheme }: { nav: (s: Screen) => v
           <div className="theme-choices" role="radiogroup" aria-label="Colour theme" onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
-            const next = event.key === "Home" ? "light" : event.key === "End" ? "dark" : theme === "light" ? "dark" : "light";
+            const modes: StudyTheme[] = ["system", "light", "dark"];
+            const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+            const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? 2 : (modes.indexOf(theme) + direction + modes.length) % modes.length;
+            const next = modes[nextIndex];
             onTheme(next);
-            event.currentTarget.querySelectorAll<HTMLButtonElement>("button")[next === "light" ? 0 : 1]?.focus();
+            event.currentTarget.querySelectorAll<HTMLButtonElement>("button")[nextIndex]?.focus();
           }}>
-            {(["light", "dark"] as const).map(mode => (
-              <button key={mode} role="radio" tabIndex={theme === mode ? 0 : -1} aria-checked={theme === mode} className={`theme-choice ${theme === mode ? "selected" : ""}`} onClick={() => onTheme(mode)}>
-                <span className={`theme-preview theme-preview-${mode}`} aria-hidden="true"><span className="preview-heading" /><span className="preview-line" /><span className="preview-paper"><i /><i /><b /></span></span>
-                <span className="theme-choice-label"><strong>{mode === "light" ? "Light" : "Dark"}</strong><span className="theme-radio">{theme === mode && <Check size={13} strokeWidth={3} />}</span></span>
+            {(["system", "light", "dark"] as const).map(mode => (
+              <button key={mode} role="radio" tabIndex={theme === mode ? 0 : -1} aria-checked={theme === mode} className={`theme-choice theme-choice-${mode} ${theme === mode ? "selected" : ""}`} onClick={() => onTheme(mode)}>
+                <span className={`theme-preview theme-preview-${mode}`} aria-hidden="true">{mode === "system" ? <Monitor size={38} strokeWidth={1.2} /> : <><span className="preview-heading" /><span className="preview-line" /><span className="preview-paper"><i /><i /><b /></span></>}</span>
+                <span className="theme-choice-label"><strong>{mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}</strong><span className="theme-radio">{theme === mode && <Check size={13} strokeWidth={3} />}</span></span>
               </button>
             ))}
           </div>
-          <span className="preference-note">Saved automatically on this device.</span>
+          <span className="preference-note">{theme === "system" ? "Follows your device automatically." : "Saved automatically on this device."}</span>
         </section>
         <section className="preference-section">
           <h2>Exam focus</h2>
@@ -1455,7 +1458,7 @@ function Onboard5Screen({ nav, onComplete }: { nav: (s: Screen) => void; onCompl
 
 export default function App() {
   const [theme, setTheme] = useState<StudyTheme>(readTheme);
-  useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => followTheme(theme), [theme]);
   useEffect(() => {
     const syncTheme = (event: StorageEvent) => { if (event.key === THEME_STORAGE_KEY || event.key === null) setTheme(readTheme()); };
     window.addEventListener("storage", syncTheme);
