@@ -1,18 +1,20 @@
 export type ScholarState = 'idle' | 'study' | 'thinking' | 'waiting' | 'celebrate' | 'encourage';
-export type ScholarFrame = { row: number; frame: number; hold: number; action: string };
+export type ScholarFrame = { row: number; frame: number; hold: number; blend: number; action: string };
+type KeyPose = [row: number, frame: number, hold: number, blend?: number];
 
-function frames(action: string, row: number, holds: number[]): ScholarFrame[] {
-  return holds.map((hold, frame) => ({ action, row, frame, hold }));
+function gesture(action: string, poses: KeyPose[]): ScholarFrame[] {
+  return poses.map(([row, frame, hold, blend = 160]) => ({ action, row, frame, hold, blend }));
 }
 
-// Each gesture plays once. Long rests and a held smile give Scholar room to breathe.
+// These are distinct illustrated poses, not evenly spaced animation frames.
+// Curate coherent gestures and rest between them instead of stretching every frame.
 export function scholarMotion(state: ScholarState, turn: number): ScholarFrame[] {
-  if (state === 'celebrate') return frames('celebrate', 4, [450, 450, 550, 450, 2200]);
-  if (turn % 2 === 0 || state === 'idle') return frames('idle', 0, [2600, 1200, 1100, 220, 1000, 1100, 2000]);
-  if (state === 'waiting') return frames('waiting', 6, [900, 1100, 1200, 1100, 1300, 2400]);
-  if (state === 'encourage') return frames('encourage', 5, [700, 700, 800, 700, 850, 1200, 1000, 2400]);
+  if (state === 'celebrate') return gesture('celebrate', [[3, 0, 180], [3, 1, 200], [3, 2, 380], [3, 1, 180], [3, 3, 240], [8, 5, 1700, 200]]);
+  if (turn % 2 === 0 || state === 'idle') return gesture('idle', [[0, 0, 2500], [0, 2, 150, 100], [0, 3, 100, 60], [0, 4, 150, 80], [0, 0, 2900, 120]]);
+  if (state === 'waiting') return gesture('waiting', [[0, 0, 220], [6, 0, 220], [6, 2, 450], [6, 3, 300], [6, 4, 400], [6, 5, 350], [0, 0, 220, 200]]);
+  if (state === 'encourage') return gesture('encourage', [[0, 0, 220], [5, 4, 220], [5, 5, 600], [5, 6, 220], [0, 0, 220, 200]]);
   // A small wave every third gesture; reading and reflection alternate between rests.
-  if (turn % 6 === 5) return frames('wave', 3, [700, 850, 1200, 1900]);
-  if (state === 'thinking' || turn % 4 === 3) return frames('thinking', 7, [900, 1200, 1000, 1300, 1100, 2400]);
-  return frames('study', 8, [850, 1200, 1100, 1300, 1100, 2600]);
+  if (turn % 6 === 5) return gesture('wave', [[3, 0, 200], [3, 1, 220], [3, 2, 420], [3, 1, 200], [3, 3, 250], [0, 0, 200]]);
+  if (state === 'thinking' || turn % 4 === 3) return gesture('thinking', [[0, 0, 220], [7, 0, 400], [7, 2, 480], [7, 3, 160, 100], [7, 4, 500], [7, 5, 250], [0, 0, 240, 200]]);
+  return gesture('study', [[0, 0, 220], [8, 0, 240], [8, 1, 1000], [8, 3, 140, 80], [8, 1, 800, 100], [8, 0, 240], [0, 0, 220, 200]]);
 }

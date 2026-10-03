@@ -27,7 +27,7 @@ describe('student loading screen', () => {
   });
   it('celebrates completion without offering cancellation or showing empty action space', () => {
     const html = renderToStaticMarkup(<StudyLoading state="ready" progress={100}>{false}</StudyLoading>);
-    expect(html).toContain('--scholar-row:4');
+    expect(html).toContain('--scholar-row:3');
     expect(html).toContain('aria-valuenow="100"');
     expect(html).not.toContain('loading-cancel');
     expect(html).not.toContain('loading-actions');

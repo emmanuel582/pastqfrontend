@@ -22,8 +22,10 @@
 .scholar-scene { --scholar-frame-width: 288px; --scholar-frame-height: 312px; position: relative; width: 360px; max-width: 100%; height: 340px; flex-shrink: 0; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 27px; isolation: isolate; }
 .scholar-books { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
 .scholar-ground { position: absolute; width: 102px; height: 7px; background: rgba(var(--study-wash-rgb),.09); border-radius: 50%; bottom: 31px; }
-.scholar-sprite { width: var(--scholar-frame-width); height: var(--scholar-frame-height); flex-shrink: 0; background-repeat: no-repeat; background-size: calc(var(--scholar-frame-width) * 8) calc(var(--scholar-frame-height) * 11); background-position: calc(var(--scholar-frame-width) * var(--scholar-frame) * -1) calc(var(--scholar-frame-height) * var(--scholar-row) * -1); opacity: 0; transition: opacity .4s ease; }
+/* Feet sit at source pixel 203 of 208: breathing grows upward from that anchor. */
+.scholar-sprite { position: relative; width: var(--scholar-frame-width); height: var(--scholar-frame-height); flex-shrink: 0; opacity: 0; transition: opacity .4s ease; transform-origin: 50% 97.6%; animation: scholar-breathe 4.8s ease-in-out infinite; }
 .scholar-sprite[data-loaded="true"] { opacity: 1; }
+.scholar-pose { position: absolute; inset: 0; background-repeat: no-repeat; background-size: calc(var(--scholar-frame-width) * 8) calc(var(--scholar-frame-height) * 11); background-position: calc(var(--scholar-frame-width) * var(--scholar-frame) * -1) calc(var(--scholar-frame-height) * var(--scholar-row) * -1); opacity: 0; transition: opacity var(--scholar-blend) linear; will-change: opacity; }
 .scholar-fallback { width: 170px; height: 200px; color: var(--study-art-ink); }
 .study-inline-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; padding: 22px; color: var(--study-muted); font-family: 'Manrope',sans-serif; }
 .study-inline-loading p { font-size: 13px; margin: 8px 0 20px; }
@@ -31,6 +33,7 @@
 .scholar-compact { --scholar-frame-width: 120px; --scholar-frame-height: 130px; width: 150px; height: 150px; padding-bottom: 12px; }
 .scholar-compact .scholar-ground { width: 45px; height: 4px; bottom: 14px; }
 @keyframes loading-progress-travel { to { transform: translateX(420%); } }
+@keyframes scholar-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.002,1.006); } }
 @keyframes loading-copy-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 900px) {
   .loading-header { padding: 25px 26px; }
