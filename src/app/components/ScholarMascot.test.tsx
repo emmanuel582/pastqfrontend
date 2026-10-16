@@ -18,11 +18,18 @@ beforeEach(() => {
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
-async function mount(state: ScholarState = 'study') { await act(async () => root.render(<ScholarMascot state={state} />)); }
+async function mount(state: ScholarState = 'study') { await act(async () => root.render(<ScholarMascot state={state} animated />)); }
 async function advance(ms: number) { await act(async () => vi.advanceTimersByTime(ms)); }
 const sprite = () => container.querySelector<HTMLElement>('.scholar-sprite')!;
 
 describe('Scholar pacing', () => {
+  it('keeps illustrations still by default without starting pose timers', async () => {
+    await act(async () => root.render(<ScholarMascot state="idle" />));
+    const pose = sprite().style.cssText;
+    expect(container.querySelector('.scholar-scene')?.getAttribute('data-animated')).toBe('false');
+    expect(vi.getTimerCount()).toBe(0);
+    await advance(60000); expect(sprite().style.cssText).toBe(pose);
+  });
   it('waits naturally, then varies gestures with an idle interval between each', async () => {
     await mount(); expect(sprite().dataset.loaded).toBe('true');
     expect(sprite().dataset.action).toBe('idle');

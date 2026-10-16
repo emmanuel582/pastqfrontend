@@ -1,45 +1,19 @@
-# Deploy PastQ (Render + Vercel + Supabase)
+# Deploy the standalone frontend
 
-## Order
+Repository: https://github.com/emmanuel582/pastqfrontend, branch `main`.
 
-1. Deploy **backend** on Render first → get URL  
-2. Deploy **frontend** on Vercel with `VITE_API_URL` = Render URL  
-3. Update **Supabase** Site URL + Redirect URLs to Vercel  
-4. Set Render `FRONTEND_URL` to Vercel URL → redeploy backend if needed  
+Use Node.js 22.13 or newer, install with `npm ci`, build with `npm run build`, and serve `dist`. Route application paths to `index.html`. The Vercel configuration includes that rewrite and security headers.
 
-## Backend (Render)
+Set these public build-time variables in the hosting project:
 
-Repo: https://github.com/emmanuel582/pastqbackend
+- `VITE_SUPABASE_URL`: the actual Supabase project URL.
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: the browser-safe publishable/anon key.
+- `VITE_API_URL`: the HTTPS backend origin, without `/api`.
 
-Env:
+Never set a service-role key in a `VITE_` variable. `.env.example` and CI placeholders are examples, not production credentials. Rebuild after changing build-time variables.
 
-```
-NODE_VERSION=20
-MISTRAL_API_KEY=...
-SUPABASE_URL=https://ovrlwgslzqvdofgkfcxl.supabase.co
-SUPABASE_ANON_KEY=...
-FRONTEND_URL=https://YOUR-FRONTEND.vercel.app
-```
+Deploy the matching backend from https://github.com/emmanuel582/pastqbackend first. It needs Supabase configuration, a stable `SESSION_OWNER_HMAC_SECRET`, a persistent writable `DATA_DIR`, and the actual frontend origin in `FRONTEND_URL`. Keep the ownership secret stable across releases so existing uploads remain accessible.
 
-## Frontend (Vercel)
+In Supabase, configure the actual frontend Site URL, OAuth/password recovery redirects, and existing student RLS policies. New accounts and older accounts without a saved study choice should open short onboarding after authentication. Completed choices should open the study room.
 
-Repo: https://github.com/emmanuel582/pastqfrontend
-
-Env:
-
-```
-VITE_SUPABASE_URL=https://ovrlwgslzqvdofgkfcxl.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_API_URL=https://YOUR-BACKEND.onrender.com
-```
-
-## Supabase checklist
-
-Authentication → URL Configuration:
-
-- Site URL = Vercel URL  
-- Redirect URLs include `https://YOUR-FRONTEND.vercel.app/**` and `https://*.vercel.app/**`  
-
-Google provider must stay enabled under Authentication → Providers.
-
-If the browser shows `403` on `/rest/v1/users`, run `supabase/users_rls.sql` in the Supabase SQL Editor.
+GitHub CI checks tests, builds and dependency audits. Hosting must follow `main` and rebuild the latest commit. Verify live account, upload/save and exam flows after deployment; see [release checks](docs/production-readiness.md).

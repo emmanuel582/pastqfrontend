@@ -1,37 +1,31 @@
-# PastQ Frontend (Vercel)
+# PastQ Frontend
 
-## Deploy on Vercel
+The standalone React/Vite app for https://github.com/emmanuel582/pastqfrontend.
 
-1. Go to [Vercel](https://vercel.com) → **Add New Project**
-2. Import: `https://github.com/emmanuel582/pastqfrontend`
-3. Framework preset: **Vite** (auto from `vercel.json`)
-4. Environment variables:
+The app opens with Scholar's greeting and account actions. Create an account first, then choose Undergraduate or Other learner. Undergraduates pick a university; other learners can pick a school, pick an exam or explore. Saved choices are retained on the account. The initial appearance follows the device theme.
 
-| Key | Value |
-|-----|--------|
-| `VITE_SUPABASE_URL` | `https://ovrlwgslzqvdofgkfcxl.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | your Supabase anon key |
-| `VITE_API_URL` | your Render URL, e.g. `https://pastq-backend.onrender.com` (**no trailing slash**) |
+Reviewed uploads are saved before session customization. Opening a saved material returns to customization, and completing answer review returns to Browse.
 
-5. Deploy → copy the Vercel URL
+## Run locally
 
-## Supabase Auth (required for Google / redirects)
+Use Node.js 22.13 or newer.
 
-In Supabase → **Authentication** → **URL Configuration**:
-
-- **Site URL:** `https://YOUR-APP.vercel.app`
-- **Redirect URLs** (add all):
-  - `https://YOUR-APP.vercel.app/**`
-  - `https://*.vercel.app/**`
-  - `http://localhost:5173/**`
-
-Then set Render `FRONTEND_URL` to the same Vercel URL.
-
-## Local
-
-```bash
-npm install
+```sh
+npm ci
 cp .env.example .env
-# leave VITE_API_URL empty so Vite proxies /api → localhost:3000
+# Fill in the Supabase project URL and public publishable/anon key.
+# Leave VITE_API_URL empty to proxy /api to a local backend on port 3000.
 npm run dev
 ```
+
+## Verify
+
+```sh
+npm test
+npm run build
+npm audit --audit-level=high
+```
+
+Tests use public test placeholders for Supabase configuration; they do not create real accounts. Production needs the actual public Supabase settings and backend origin.
+
+See [deployment instructions](DEPLOY.md) and [release checks](docs/production-readiness.md). The matching API is maintained in https://github.com/emmanuel582/pastqbackend.

@@ -25,6 +25,12 @@
 /* Feet sit at source pixel 203 of 208: breathing grows upward from that anchor. */
 .scholar-sprite { position: relative; width: var(--scholar-frame-width); height: var(--scholar-frame-height); flex-shrink: 0; opacity: 0; transition: opacity .4s ease; transform-origin: 50% 97.6%; animation: scholar-breathe 4.8s ease-in-out infinite; }
 .scholar-sprite[data-loaded="true"] { opacity: 1; }
+.scholar-scene[data-animated="false"] .scholar-sprite { animation:none; }
+.study-loading[aria-busy="true"] .scholar-scene[data-animated="false"] .scholar-sprite { animation:scholar-breathe 4.8s ease-in-out infinite; }
+.scholar-scene[data-animated="false"] .scholar-pose { transition-timing-function:ease-in-out; }
+.scholar-scene[data-animated="false"] .scholar-ground { transition:opacity .38s ease-in-out; }
+.results-scholar .scholar-scene[data-animated="false"] .scholar-sprite[data-loaded="true"] { animation:scholar-settle .6s ease-out both; }
+@keyframes scholar-settle { from { transform:translateY(5px); } to { transform:translateY(0); } }
 .scholar-pose { position: absolute; inset: 0; background-repeat: no-repeat; background-size: calc(var(--scholar-frame-width) * 8) calc(var(--scholar-frame-height) * 11); background-position: calc(var(--scholar-frame-width) * var(--scholar-frame) * -1) calc(var(--scholar-frame-height) * var(--scholar-row) * -1); opacity: 0; transition: opacity var(--scholar-blend) linear; will-change: opacity; }
 .scholar-fallback { width: 170px; height: 200px; color: var(--study-art-ink); }
 .study-inline-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; padding: 22px; color: var(--study-muted); font-family: 'Manrope',sans-serif; }

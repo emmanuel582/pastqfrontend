@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { saveBundle } from '../../services/libraryService';
 import { getVisionSession, replyVisionFollowUp, resumeVisionSession, type VisionFollowUp, type VisionSession } from '../../services/vision';
 import StudyLoading from './StudyLoading';
 
@@ -30,12 +29,8 @@ export default function ProcessingScreen({ nav, sessionId, onQuestionsReady }: {
         if (['completed', 'completed_with_errors'].includes(current.status) && current.questions?.length) {
           if (completed.current === current.id) return;
           completed.current = current.id;
-          try {
-            await saveBundle({ id: current.id, title: current.name, name: current.name,
-              questions: current.questions, groups: current.groups || [], updatedAt: Date.now(), createdAt: Date.now() });
-          } catch { /* Continue to the available questions even if device storage is full. */ }
           if (!active) return;
-          const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 2600;
+          const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350;
           finishTimer = setTimeout(() => {
             if (active) void callbacks.current.onQuestionsReady(current.questions || [],
               { groups: current.groups, name: current.name, sessionId: current.id });

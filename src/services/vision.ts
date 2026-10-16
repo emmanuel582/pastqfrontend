@@ -32,6 +32,7 @@ export type VisionSession = {
   name: string;
   icon?: string;
   status: string;
+  approvedAt?: string | null;
   progress?: {
     total: number;
     done: number;
@@ -131,6 +132,35 @@ export async function getVisionSession(sessionId: string): Promise<VisionSession
   const res = await authenticatedFetch(`/api/vision/sessions/${sessionId}`);
   if (!res.ok) throw new Error("Session not found");
   return res.json();
+}
+
+export async function confirmVisionMaterial(sessionId: string, questions: unknown[]) {
+  const response = await authenticatedFetch(`/api/vision/sessions/${encodeURIComponent(sessionId)}/confirm`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ questions }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error?.message || body?.error || 'Could not save your material. Please try again.');
+  return body;
+}
+
+export async function getSavedMaterials() {
+  const materials: any[] = [];
+  let offset: number | null = 0;
+  do {
+    const response = await authenticatedFetch(`/api/vision/materials?offset=${offset}&limit=100`);
+    if (!response.ok) throw new Error('Could not load your saved uploads.');
+    const body = await response.json();
+    materials.push(...(body.materials || []));
+    const next = body.nextOffset;
+    offset = Number.isSafeInteger(next) && next > offset! ? next : null;
+  } while (offset !== null);
+  return materials;
+}
+
+export async function getSavedMaterial(id: string) {
+  const response = await authenticatedFetch(`/api/vision/materials/${encodeURIComponent(id)}`);
+  if (!response.ok) throw new Error('Could not open your saved material. Check your connection and try again.');
+  return response.json();
 }
 
 export async function resumeVisionSession(sessionId: string): Promise<VisionSession> {

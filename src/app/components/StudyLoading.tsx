@@ -3,9 +3,9 @@ import ScholarMascot, { type ScholarState } from './ScholarMascot';
 
 type LoadingState = 'preparing' | 'ready' | 'waiting' | 'interrupted' | 'failed' | 'empty';
 const titles: Record<LoadingState, string> = {
-  preparing: 'Your next session,\ncoming together.', ready: 'All set.\nLet’s practise.',
-  waiting: 'A little help,\nthen we’re ready.', interrupted: 'We’ll pick up\nwhere we left off.',
-  failed: 'Let’s give it\nanother try.', empty: 'Ready for\nyour next material.',
+  preparing: 'Preparing your questions', ready: 'Questions ready',
+  waiting: 'Check this page', interrupted: 'Reconnecting',
+  failed: 'Couldn’t prepare questions', empty: 'Add your questions',
 };
 export default function StudyLoading({ state = 'preparing', name, progress, message, children, compact = false }: {
   state?: LoadingState; name?: string; progress?: number | null; message?: string;

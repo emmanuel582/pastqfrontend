@@ -5,7 +5,9 @@
       
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-      <script>(function () { var saved; try { saved = localStorage.getItem('pastq-theme'); } catch {} var theme = saved === 'light' || saved === 'dark' ? saved : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.documentElement.classList.toggle('dark', theme === 'dark'); document.documentElement.style.colorScheme = theme; })();</script>
+      <meta name="theme-color" content="#faf6f0" />
+      <link rel="icon" type="image/svg+xml" href="/pastq-icon.svg" />
+      <script>(function () { var saved; try { saved = localStorage.getItem('pastq-theme'); } catch {} var theme = saved === 'light' || saved === 'dark' ? saved : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; document.documentElement.dataset.theme = theme; document.documentElement.classList.toggle('dark', theme === 'dark'); document.documentElement.style.colorScheme = theme; var chrome = document.querySelector('meta[name="theme-color"]'); if (chrome) chrome.content = theme === 'dark' ? '#151515' : '#faf6f0'; })();</script>
       <title>PastQ</title>
       <meta name="description" content="Convert past exam papers into timed CBT practice tests." />
       <meta name="robots" content="index, follow" />

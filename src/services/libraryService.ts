@@ -1,11 +1,11 @@
 import localforage from "localforage";
+import { apiUrl } from "./api";
 
 localforage.config({
   name: "PastQLibrary",
   storeName: "downloaded_bundles",
 });
 
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
 
 export interface CatalogUniversity {
   id: string;
@@ -91,7 +91,7 @@ function normalizeBundle(raw: any) {
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`);
+  const res = await fetch(apiUrl(path));
   if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -127,21 +127,26 @@ export const downloadBundle = async (bundleId: string) => {
 export const saveBundle = async (bundle: any) => {
   const normalized = normalizeBundle(bundle);
   if (!normalized) throw new Error("Invalid bundle");
-  await localforage.setItem(normalized.id, normalized);
+  const key = normalized.sourceSessionId && normalized.ownerId ? `private:${normalized.ownerId}:${normalized.id}` : normalized.id;
+  await localforage.setItem(key, normalized);
   return normalized;
 };
 
-export const getOfflineLibrary = async () => {
+export const getOfflineLibrary = async (ownerId?: string) => {
   const bundles: any[] = [];
   await localforage.iterate((value) => {
     const b = normalizeBundle(value);
-    if (b) bundles.push(b);
+    // Older extraction previews were cached before review with no account scope.
+    // They are drafts, not saved library materials, and must not cross accounts.
+    if (b && !b.sourceSessionId && !b.approvedAt && !b.manufacturer && !b.organization && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(b.id)) return;
+    if (b && (!b.sourceSessionId || b.ownerId === ownerId)) bundles.push(b);
   });
   return bundles.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
 };
 
-export const getOfflineBundle = async (bundleId: string) => {
-  const raw = await localforage.getItem(bundleId);
+export const getOfflineBundle = async (bundleId: string, ownerId?: string) => {
+  const raw = (ownerId && await localforage.getItem(`private:${ownerId}:${bundleId}`)) || await localforage.getItem(bundleId);
+  if ((raw as any)?.sourceSessionId && (raw as any)?.ownerId !== ownerId) return null;
   return normalizeBundle(raw);
 };
 

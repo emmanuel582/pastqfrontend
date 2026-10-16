@@ -13,6 +13,7 @@ export function applyTheme(theme: StudyTheme) {
   document.documentElement.dataset.theme = resolved;
   document.documentElement.classList.toggle('dark', resolved === 'dark');
   document.documentElement.style.colorScheme = resolved;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'dark' ? '#151515' : '#faf6f0');
   try { localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* Keep the current session usable when storage is blocked. */ }
 }
 

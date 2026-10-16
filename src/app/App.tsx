@@ -2,8 +2,12 @@ import React, { useState, useEffect, useRef } from "react";
 import MathText from "./components/MathText";
 import { useAppNavigation } from "./useAppNavigation";
 import { AuthScreen } from "./components/auth/AuthScreen";
+import OnboardingScreen from "./components/auth/OnboardingScreen";
+import { readStudyPreferences, type StudyPreferences } from "../services/onboarding";
 import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
 import ProcessingScreen from "./components/ProcessingScreen";
+import ScholarMascot from "./components/ScholarMascot";
+import AppWelcome from "./components/AppWelcome";
 import SnapScreen, { type UploadDraft } from "./components/upload/SnapScreen";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -17,21 +21,21 @@ import { listenToAuth, logoutUser } from "../services/auth";
 
 import { getUserHistory, saveExamSession, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
 import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
-import { StudyHome, StudyLibrary, StudyWelcome, StudyProgress } from "./components/library/StudyLibrary";
+import { StudyHome, StudyLibrary, StudyProgress } from "./components/library/StudyLibrary";
 import { StudyWorkspace, StudyResults } from "./components/cbt/StudyWorkspace";
 import { answerIndex } from "../utils/examSession";
 import { readTheme, followTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
 import { CustomizeCbtScreen } from "./components/cbt/CustomizeCbtScreen";
-import { isCbtQuestion, customDurationSeconds } from "../utils/cbtFilters";
+import { isCbtQuestion } from "../utils/cbtFilters";
 import { supabase } from "../services/supabase";
 import { rankRecommendationCandidates, recordAnonymousAttemptSummary } from "../services/recommendations";
 import {
   extractVisionText,
+  confirmVisionMaterial, getSavedMaterials, getSavedMaterial,
 } from "../services/vision";
 
 type Screen =
-  | "splash" | "signup" | "login" | "forgot-password"
-  | "onboard-name" | "onboard-1" | "onboard-2" | "onboard-3" | "onboard-4" | "onboard-5"
+  | "splash" | "signup" | "login" | "forgot-password" | "change-password" | "onboarding"
   | "home" | "snap" | "processing" | "review-questions" | "customize-cbt"
   | "exam" | "results" | "review-answers" | "preference" | "manual-entry"
   | "profile-edit" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
@@ -39,6 +43,7 @@ type NavTab = "home" | "library" | "lead" | "preference";
 
 interface Q {
   id: number;
+  type?: string;
   practiceKey?: string;
   subject: string;
   question: string;
@@ -195,123 +200,14 @@ function PrimaryBtn({ label, onClick, full = true }: { label: string; onClick: (
   );
 }
 
-// ── Splash Illustration ───────────────────────────────────────────────────────
-
-function SplashIllustration() {
-  return (
-    <svg width="220" height="210" viewBox="0 0 220 210" fill="none" aria-hidden="true">
-      {/* Exam paper — slightly tilted */}
-      <g transform="rotate(-8 105 115)">
-        <rect x="45" y="30" width="112" height="145" rx="6" fill="white" stroke="#EADFD3" strokeWidth="1.5" />
-        <rect x="62" y="52" width="78" height="3" rx="1.5" fill="#CBD5E1" />
-        <rect x="62" y="62" width="55" height="2.5" rx="1.25" fill="#EADFD3" />
-        <rect x="62" y="78" width="24" height="3" rx="1.5" fill="#E67468" opacity="0.65" />
-        <rect x="62" y="87" width="78" height="2.5" rx="1.25" fill="#EADFD3" />
-        <rect x="62" y="94" width="62" height="2.5" rx="1.25" fill="#EADFD3" />
-        <circle cx="68" cy="108" r="4.5" stroke="#CBD5E1" strokeWidth="1.5" />
-        <circle cx="88" cy="108" r="4.5" stroke="#CBD5E1" strokeWidth="1.5" />
-        <circle cx="88" cy="108" r="2.5" fill="#E67468" />
-        <circle cx="108" cy="108" r="4.5" stroke="#CBD5E1" strokeWidth="1.5" />
-        <circle cx="128" cy="108" r="4.5" stroke="#CBD5E1" strokeWidth="1.5" />
-        <rect x="62" y="122" width="24" height="3" rx="1.5" fill="#E67468" opacity="0.65" />
-        <rect x="62" y="131" width="78" height="2.5" rx="1.25" fill="#EADFD3" />
-        <rect x="62" y="138" width="50" height="2.5" rx="1.25" fill="#EADFD3" />
-      </g>
-      {/* Camera frame */}
-      <rect x="56" y="44" width="108" height="132" rx="11" fill="none" stroke="#E67468" strokeWidth="2.5" />
-      <rect x="67" y="55" width="86" height="110" rx="7" fill="#E67468" fillOpacity="0.04" />
-      {/* Amber corner brackets */}
-      <path d="M64 42 L64 55 M64 42 L77 42" stroke="#7A6CB2" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M156 42 L156 55 M156 42 L143 42" stroke="#7A6CB2" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M64 176 L64 163 M64 176 L77 176" stroke="#7A6CB2" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M156 176 L156 163 M156 176 L143 176" stroke="#7A6CB2" strokeWidth="2.5" strokeLinecap="round" />
-      {/* Scan line */}
-      <line x1="67" y1="110" x2="153" y2="110" stroke="#7A6CB2" strokeWidth="1.5" strokeDasharray="5 3" opacity="0.85" />
-      {/* Top camera dot */}
-      <circle cx="110" cy="49" r="3" fill="#E67468" opacity="0.35" />
-      {/* Sparkle star */}
-      <path d="M184 50 L186.4 57.6 L194 57.6 L188 62.4 L190.4 70 L184 65.2 L177.6 70 L180 62.4 L174 57.6 L181.6 57.6 Z" fill="#7A6CB2" opacity="0.8" />
-      {/* Small decorative dots */}
-      <circle cx="35" cy="155" r="5" fill="#7A6CB2" opacity="0.3" />
-      <circle cx="192" cy="145" r="3.5" fill="#E67468" opacity="0.22" />
-      <circle cx="40" cy="78" r="3" fill="#E67468" opacity="0.18" />
-    </svg>
-  );
-}
-
-// ── Screen Components ─────────────────────────────────────────────────────────
-
-function SplashScreen({ nav, onStartDemo }: { nav: (s: Screen) => void; onStartDemo: () => void }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-between px-7 pb-10 bg-[#FAF6F0]">
-      <div className="flex-1 flex flex-col items-center justify-center gap-7">
-        <motion.div initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 2 }}>
-          <SplashIllustration />
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 2, delay: 0.2 }} className="text-center space-y-3">
-          <h1 className="text-[52px] font-extrabold text-[#2E2A27] tracking-[-2px] leading-none" style={JK}>PastQ</h1>
-          <p className="text-[15px] text-[#8C8681] leading-relaxed" style={INTER}>
-            Snap any past question.<br />Practice it like the real exam.
-          </p>
-        </motion.div>
-      </div>
-      <div className="w-full space-y-3">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 2, delay: 0.4 }}>
-          <PrimaryBtn label="Get Started" onClick={() => nav("signup")} />
-        </motion.div>
-        <button onClick={onStartDemo} className="w-full py-3 rounded-2xl border border-[#EADFD3] bg-white text-[13px] font-bold text-[#695AA5]" style={JK}>Try the 3-question demo</button>
-        <motion.button initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 2, delay: 0.6 }} onClick={() => nav("login")} className="w-full text-center text-[14px] text-[#8C8681]" style={INTER}>
-          Already have an account?{" "}
-          <span className="text-[#E67468] font-semibold">Sign in</span>
-        </motion.button>
-      </div>
-    </div>
-  );
-}
-
-function OnboardNameScreen({ nav, onName }: { nav: (s: Screen) => void; onName: (name: string) => void }) {
-  const [name, setName] = useState("");
-  const canContinue = name.trim().length > 0;
-
-  return (
-    <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center justify-between">
-        <OnboardStep step={1} />
-        <div className="w-9" />
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        <div>
-          <h2 className="text-[28px] font-bold text-[#2E2A27] leading-tight" style={JK}>
-            What can we call you?
-          </h2>
-          <p className="text-[14px] text-[#8C8681] mt-2" style={INTER}>
-            This helps us personalise your experience.
-          </p>
-        </div>
-        <div className="space-y-4">
-          <Field label="Your name" placeholder="Enter a display name" value={name} onChange={setName} />
-        </div>
-      </div>
-      <div className="px-5 py-4 bg-white border-t border-[#EADFD3]">
-        <button onClick={() => {
-          if (!canContinue) return;
-          onName(name.trim());
-          nav("home");
-        }}
-          className="w-full py-4 rounded-2xl text-[15px] font-bold transition-all"
-          style={{ background: canContinue ? "#E67468" : "#EADFD3", color: canContinue ? "white" : "#94A3B8", boxShadow: canContinue ? "0 8px 20px rgba(37,99,235,0.2)" : "none", ...JK }}>
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-}
+// ── Screens ───────────────────────────────────────────────────────────────────
 
 function HomeScreen({
   nav,
   tab,
   onTab,
   userName,
+  studyPreferences,
   sessions,
   offlineLibrary,
   globalLibrary,
@@ -327,6 +223,7 @@ function HomeScreen({
   tab: NavTab;
   onTab: (t: NavTab) => void;
   userName: string;
+  studyPreferences: StudyPreferences | null;
   sessions: any[];
   offlineLibrary: any[];
   globalLibrary: any[];
@@ -341,9 +238,10 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && <StudyHome name={userName} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
+        {tab === "home" && <StudyHome name={userName} focus={studyPreferences?.focus} onChangeFocus={() => nav("onboarding")} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
           <StudyLibrary
+            initialSearch={studyPreferences?.focus?.aliases?.[0] || studyPreferences?.focus?.name || ""}
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
             catalog={libraryCatalog}
@@ -372,9 +270,13 @@ function ManualEntryScreen({
 }) {
   const [text, setText] = useState("");
   const [materialName, setMaterialName] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const sending = useRef(false);
 
   const confirmUpload = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() || sending.current) return;
+    sending.current = true; setPending(true); setError('');
     const name = materialName.trim() || "Manual Entry";
     const icon = "📝";
 
@@ -383,10 +285,8 @@ function ManualEntryScreen({
       onSessionStarted(data.sessionId || data.jobId);
       nav("processing");
     } catch (err) {
-      console.error(err);
-      alert("Failed to process text. Please try again.");
-      nav("manual-entry");
-    }
+      setError(err instanceof Error ? err.message : 'Could not prepare your questions. Please try again.');
+    } finally { sending.current = false; setPending(false); }
   };
 
   return (
@@ -418,12 +318,13 @@ function ManualEntryScreen({
         
         <button 
           onClick={confirmUpload} 
-          disabled={!text.trim()}
+          disabled={!text.trim() || pending}
           className="w-full py-4 rounded-2xl text-[16px] font-bold bg-[#E67468] text-white shadow-lg shadow-[#E67468]/20 disabled:opacity-50" 
           style={JK}
         >
-          Process Questions
+          {pending ? 'Preparing…' : 'Prepare questions'}
         </button>
+        {error && <p className="selection-error" role="alert">{error}</p>}
       </div>
     </div>
   );
@@ -433,17 +334,18 @@ function ReviewQuestionsScreen({
   nav,
   questions,
   onUpdateQuestions,
-  onStartTest,
+  onSave,
 }: {
   nav: (s: Screen) => void;
   questions: Q[];
   onUpdateQuestions: (qs: Q[]) => void;
-  onStartTest: (durationSeconds: number, selected?: Q[]) => void;
+  onSave: () => Promise<void>;
 }) {
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<Q | null>(null);
-  const [durationMinutes, setDurationMinutes] = useState('30');
-  const uploadDuration = customDurationSeconds(durationMinutes);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const savePending = useRef(false);
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
 
   const groups = (() => {
@@ -477,7 +379,8 @@ function ReviewQuestionsScreen({
     selectedGroup === "all"
       ? sortQuestions(questions)
       : sortQuestions(groups.find((g) => g.key === selectedGroup)?.items || questions);
-  const blockingQuestions = visible.filter((q) => !q.question.trim() || q.options.filter((option) => option.trim()).length < 2 || q.incomplete);
+  const minimumOptions = (q: Q) => q.type && !['single_choice', 'multiple_choice', 'true_false'].includes(q.type) ? 0 : 2;
+  const blockingQuestions = questions.filter((q) => !q.question.trim() || q.options.filter((option) => option.trim()).length < minimumOptions(q) || q.incomplete);
   const reviewQuestions = visible.filter((q) => q.needsReview);
 
   const openEdit = (i: number) => {
@@ -489,8 +392,10 @@ function ReviewQuestionsScreen({
 
   const saveEdit = () => {
     if (editIndex === null || !draft) return;
-    const options = draft.options.map((o) => o.trim()).filter(Boolean);
-    const incomplete = !draft.question.trim() || options.length < 2;
+    const keptOptions = draft.options.map((text, index) => ({ text: text.trim(), index })).filter(option => option.text);
+    const options = keptOptions.map(option => option.text);
+    const correct = draft.correct == null ? null : keptOptions.findIndex(option => option.index === draft.correct);
+    const incomplete = !draft.question.trim() || options.length < minimumOptions(draft);
     const reviewReasons = (draft.reviewReasons || []).filter((reason) => reason !== "insufficient_complete_options");
     if (incomplete) reviewReasons.push("insufficient_complete_options");
     const next = questions.map((q, i) => i === editIndex ? {
@@ -500,7 +405,7 @@ function ReviewQuestionsScreen({
       incomplete,
       reviewReasons: [...new Set(reviewReasons)],
       needsReview: incomplete || reviewReasons.length > 0 || (draft.qualityFlags || []).length > 0,
-      correct: draft.correct != null && draft.correct < options.length ? draft.correct : null,
+      correct: correct != null && correct >= 0 ? correct : null,
     } : q);
     onUpdateQuestions(next);
     setEditIndex(null);
@@ -508,10 +413,10 @@ function ReviewQuestionsScreen({
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#FAF6F0] relative">
+    <div className="study-app material-review h-full flex flex-col relative" aria-busy={saving}>
       <div className="px-5 pt-2 pb-3 bg-white border-b border-[#EADFD3] flex items-center gap-3">
         <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Review Questions</h2>
+          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Check your questions</h2>
           <p className="text-[12px] text-[#8C8681]" style={INTER}>
             {questions.length} extracted · viewing {visible.length}
           </p>
@@ -602,21 +507,24 @@ function ReviewQuestionsScreen({
           </div>
         ))}
       </div>
-      <div className="px-5 py-4 bg-white border-t border-[#EADFD3]">
-        <div className="flex flex-col gap-2 mb-4">
-          <label htmlFor="upload-exam-time" className="text-[12px] font-semibold text-[#8C8681]" style={INTER}>Exam duration</label>
-          <div className="duration-input"><Clock size={17} /><input id="upload-exam-time" aria-label="Exam duration in minutes" type="number" min="0" step="any" inputMode="decimal" value={durationMinutes} onChange={event => setDurationMinutes(event.target.value)} aria-invalid={uploadDuration === null} /><span>min</span></div>
-          {uploadDuration === null && <p className="selection-error" role="alert">Enter a time greater than zero.</p>}
-        </div>
+      <div className="material-review-save px-5 py-4 bg-white border-t border-[#EADFD3]">
+        <div className="material-review-scholar"><ScholarMascot state={saving ? 'study' : 'idle'} compact /><span>{saving ? 'Saving your material…' : 'Ready when you are.'}</span></div>
+        {saveError && <p className="selection-error" role="alert">{saveError}</p>}
         <button
-          disabled={blockingQuestions.length > 0 || !visible.some(isCbtQuestion) || uploadDuration === null}
-          onClick={() => { if (uploadDuration !== null) onStartTest(uploadDuration, visible.filter(isCbtQuestion)); }}
+          disabled={saving || blockingQuestions.length > 0 || !questions.length}
+          onClick={async () => {
+            if (savePending.current) return;
+            savePending.current = true; setSaving(true); setSaveError('');
+            try { await onSave(); }
+            catch (error) { setSaveError(error instanceof Error ? error.message : 'Could not save. Please try again.'); }
+            finally { savePending.current = false; setSaving(false); }
+          }}
           className="w-full bg-[#E67468] text-white py-4 rounded-2xl text-[15px] font-bold shadow-lg shadow-[#E67468]/20 disabled:bg-[#EADFD3] disabled:text-[#8C8681] disabled:shadow-none"
           style={JK}
         >
           {blockingQuestions.length > 0
             ? `Fix ${blockingQuestions.length} incomplete question${blockingQuestions.length === 1 ? "" : "s"}`
-            : selectedGroup === "all" ? "Looks good — Start Test" : `Start ${visible.length}-Q group`}
+            : saving ? 'Saving…' : 'Looks good — save'}
         </button>
       </div>
       <AnimatePresence>
@@ -1174,286 +1082,6 @@ function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; su
   );
 }
 
-// ── Onboarding Screens ───────────────────────────────────────────────────────
-
-function OnboardStep({ step }: { step: number }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="h-1 rounded-full transition-all duration-300"
-          style={{ width: i === step ? 24 : 8, background: i <= step ? "#E67468" : "#EADFD3" }} />
-      ))}
-    </div>
-  );
-}
-
-const EXAM_TYPES = [
-  { id: "entrance", label: "Entrance exams", icon: "🎯" },
-  { id: "secondary", label: "Secondary school exams", icon: "📋" },
-  { id: "university", label: "University exams", icon: "🎓" },
-  { id: "professional", label: "Professional exams", icon: "🏛️" },
-  { id: "other", label: "Other exam", icon: "✏️" },
-];
-
-function Onboard1Screen({ nav }: { nav: (s: Screen) => void }) {
-  const [selected, setSelected] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (selected) {
-      const timer = setTimeout(() => nav("onboard-3"), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [selected, nav]);
-
-  return (
-    <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center justify-between">
-        <OnboardStep step={1} />
-        <div className="w-9" />
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <h2 className="text-[28px] font-bold text-[#2E2A27] leading-tight" style={JK}>
-            What are you<br />preparing for?
-          </h2>
-          <p className="text-[14px] text-[#8C8681] mt-2" style={INTER}>
-            This helps us personalise your experience
-          </p>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="space-y-2.5">
-          {EXAM_TYPES.map(({ id, label, icon }) => {
-            const active = selected === id;
-            return (
-              <button key={id} onClick={() => setSelected(id)}
-                className="w-full flex items-center gap-4 p-4 rounded-2xl border-[1.5px] text-left transition-all"
-                style={{ background: active ? "#F5E8E7" : "white", borderColor: active ? "#E67468" : "#EADFD3" }}>
-                <span className="text-[20px] w-7 text-center leading-none">{icon}</span>
-                <span className="flex-1 text-[15px] font-semibold text-[#2E2A27]" style={JK}>{label}</span>
-                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
-                  style={{ background: active ? "#E67468" : "#F1F5F9", border: active ? "none" : "1.5px solid #EADFD3" }}>
-                  {active && <Check size={12} color="white" strokeWidth={3} />}
-                </div>
-              </button>
-            );
-          })}
-        </motion.div>
-      </div>
-      <div className="px-5 py-4 bg-white border-t border-[#EADFD3]">
-        <button onClick={() => selected && nav("onboard-3")}
-          className="w-full py-4 rounded-2xl text-[15px] font-bold transition-all"
-          style={{ background: selected ? "#E67468" : "#EADFD3", color: selected ? "white" : "#94A3B8", boxShadow: selected ? "0 8px 20px rgba(37,99,235,0.2)" : "none", ...JK }}>
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Onboard2Screen removed — exam name/date step no longer required
-
-const STUDY_OPTS = [
-  { id: "lt1", label: "Less than 1 hour", sub: "Short daily bursts" },
-  { id: "1-2", label: "1–2 hours", sub: "Consistent practice" },
-  { id: "3-4", label: "3–4 hours", sub: "Deep study sessions" },
-  { id: "all", label: "More than 4 hours", sub: "Full preparation mode" },
-];
-
-function Onboard3Screen({ nav }: { nav: (s: Screen) => void }) {
-  const [selected, setSelected] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (selected) {
-      const timer = setTimeout(() => nav("onboard-4"), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [selected, nav]);
-
-  return (
-    <div className="min-h-screen flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center justify-between">
-        <OnboardStep step={3} />
-        <div className="w-9" />
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
-          <h2 className="text-[28px] font-bold text-[#2E2A27] leading-tight" style={JK}>
-            How much time do<br />you have daily?
-          </h2>
-          <p className="text-[14px] text-[#8C8681] mt-2" style={INTER}>
-            {"We'll"} plan your practice sessions around this
-          </p>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="space-y-3">
-          {STUDY_OPTS.map(({ id, label, sub }) => {
-            const active = selected === id;
-            return (
-              <button key={id} onClick={() => setSelected(id)}
-                className="w-full p-4 rounded-2xl border-[1.5px] text-left transition-all"
-                style={{ background: active ? "#E67468" : "white", borderColor: active ? "#E67468" : "#EADFD3", boxShadow: active ? "0 8px 24px rgba(37,99,235,0.25)" : "none" }}>
-                <p className="text-[17px] font-bold leading-tight" style={{ color: active ? "white" : "#2E2A27", ...JK }}>{label}</p>
-                <p className="text-[12px] mt-1" style={{ color: active ? "rgba(255,255,255,0.72)" : "#94A3B8", ...INTER }}>{sub}</p>
-              </button>
-            );
-          })}
-        </motion.div>
-      </div>
-      <div className="px-5 py-4 bg-white border-t border-[#EADFD3]">
-        <button onClick={() => selected && nav("onboard-4")}
-          className="w-full py-4 rounded-2xl text-[15px] font-bold transition-all"
-          style={{ background: selected ? "#E67468" : "#EADFD3", color: selected ? "white" : "#94A3B8", boxShadow: selected ? "0 8px 20px rgba(37,99,235,0.2)" : "none", ...JK }}>
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-}
-
-const BUILD_ITEMS = [
-  "Choose your exam focus",
-  "Set personal study goals",
-  "Prepare your practice routine",
-];
-
-function Onboard4Screen({ nav }: { nav: (s: Screen) => void }) {
-  const [ticked, setTicked] = useState(0);
-  const [barW, setBarW] = useState(0);
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setTicked(1), 500);
-    const t2 = setTimeout(() => setTicked(2), 1000);
-    const t3 = setTimeout(() => setTicked(3), 1500);
-    const tb = setTimeout(() => setBarW(70), 300);
-    const tn = setTimeout(() => nav("onboard-5"), 2000);
-    return () => [t1, t2, t3, tb, tn].forEach(clearTimeout);
-  }, []);
-
-  return (
-    <div className="h-full flex flex-col items-center justify-center bg-[#FAF6F0] px-8">
-      {/* Spinner */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="relative w-20 h-20 mb-8">
-        <div className="absolute inset-0 rounded-full border-[6px] border-[#EADFD3]" />
-        <div className="absolute inset-0 rounded-full border-[6px] border-transparent border-t-[#E67468] animate-spin" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-9 h-9 rounded-xl bg-[#F5E8E7] flex items-center justify-center">
-            <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
-              <path d="M1 7 L6 12 L17 1" stroke="#E67468" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-        </div>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }}>
-        <h2 className="text-[22px] font-bold text-[#2E2A27] text-center mb-1.5" style={JK}>
-          Setting up your<br />PastQ experience
-        </h2>
-        <p className="text-[14px] text-[#94A3B8] text-center mb-8" style={INTER}>Just a moment…</p>
-      </motion.div>
-
-      {/* Animated checklist */}
-      <div className="w-full space-y-3 mb-8">
-        {BUILD_ITEMS.map((item, i) => {
-          const done = ticked > i;
-          return (
-            <div key={item}
-              className="flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-500"
-              style={{ background: done ? "#F0FDF4" : "white", borderColor: done ? "#86EFAC" : "#EADFD3" }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300"
-                style={{ background: done ? "#22C55E" : "#F1F5F9" }}>
-                {done
-                  ? <Check size={14} color="white" strokeWidth={2.5} />
-                  : <div className="w-2 h-2 rounded-full bg-[#CBD5E1]" />}
-              </div>
-              <span className="text-[14px] font-medium transition-colors duration-300"
-                style={{ color: done ? "#15803D" : "#94A3B8", ...INTER }}>
-                {item}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Progress bar */}
-      <div className="w-full">
-        <div className="h-2.5 bg-[#EADFD3] rounded-full overflow-hidden">
-          <div className="h-full bg-[#E67468] rounded-full transition-all duration-[2000ms] ease-out"
-            style={{ width: `${barW}%` }} />
-        </div>
-        <p className="text-[12px] text-[#94A3B8] text-center mt-2" style={INTER}>{barW}% complete</p>
-      </div>
-    </div>
-  );
-}
-
-function PayoffIllustration() {
-  return (
-    <svg width="240" height="212" viewBox="0 0 240 212" fill="none" aria-hidden="true">
-      {/* Burst rays */}
-      <line x1="120" y1="20" x2="120" y2="7" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="172" y1="36" x2="180" y2="25" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="203" y1="82" x2="215" y2="76" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="203" y1="128" x2="215" y2="134" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="172" y1="170" x2="180" y2="181" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="68" y1="170" x2="60" y2="181" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="37" y1="128" x2="25" y2="134" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="37" y1="82" x2="25" y2="76" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="68" y1="36" x2="60" y2="25" stroke="#7A6CB2" strokeWidth="3.5" strokeLinecap="round" />
-      {/* Background glow circle */}
-      <circle cx="120" cy="105" r="68" fill="#F5E8E7" />
-      {/* Student — head */}
-      <circle cx="120" cy="72" r="19" fill="#E67468" />
-      <circle cx="113" cy="70" r="2.5" fill="white" />
-      <circle cx="127" cy="70" r="2.5" fill="white" />
-      <path d="M114 79 Q120 84 126 79" stroke="white" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-      {/* Body */}
-      <rect x="100" y="93" width="40" height="35" rx="8" fill="#E67468" />
-      {/* Left arm raised */}
-      <path d="M100 100 L85 79" stroke="#E67468" strokeWidth="7" strokeLinecap="round" />
-      <circle cx="83" cy="77" r="5.5" fill="#E67468" />
-      {/* Right arm with phone */}
-      <path d="M140 98 L156 82" stroke="#E67468" strokeWidth="7" strokeLinecap="round" />
-      {/* Phone */}
-      <rect x="152" y="68" width="21" height="30" rx="4" fill="white" stroke="#E67468" strokeWidth="2" />
-      <rect x="156" y="73" width="13" height="18" rx="2" fill="#60A5FA" />
-      <path d="M157 82 L160 85 L167 78" stroke="#22C55E" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="162.5" cy="93.5" r="1.5" fill="#CBD5E1" />
-      {/* Confetti */}
-      <rect x="40" y="46" width="11" height="11" rx="3" fill="#7A6CB2" transform="rotate(22 45 51)" />
-      <rect x="184" y="42" width="10" height="10" rx="2.5" fill="#E67468" opacity="0.7" transform="rotate(-16 189 47)" />
-      <rect x="33" y="118" width="9" height="9" rx="2" fill="#60A5FA" transform="rotate(28 37 122)" />
-      <rect x="192" y="116" width="10" height="10" rx="2.5" fill="#7A6CB2" transform="rotate(-24 197 121)" />
-      <circle cx="62" cy="162" r="6" fill="#7A6CB2" opacity="0.6" />
-      <circle cx="182" cy="164" r="5" fill="#E67468" opacity="0.5" />
-      <circle cx="48" cy="82" r="4.5" fill="#E67468" opacity="0.22" />
-      <circle cx="197" cy="78" r="5" fill="#7A6CB2" opacity="0.38" />
-      {/* Stars */}
-      <path d="M60 56 L62.5 63.5 L70.5 63.5 L64.5 68.4 L67 76 L60 71.1 L53 76 L55.5 68.4 L49.5 63.5 L57.5 63.5 Z" fill="#7A6CB2" opacity="0.9" />
-      <path d="M183 52 L185 57.5 L191 57.5 L186.5 61 L188.5 66.5 L183 63 L177.5 66.5 L179.5 61 L175 57.5 L181 57.5 Z" fill="#7A6CB2" opacity="0.65" />
-    </svg>
-  );
-}
-
-function Onboard5Screen({ nav, onComplete }: { nav: (s: Screen) => void; onComplete: () => void }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-between bg-[#FAF6F0] px-7 pb-10">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="flex-1 flex flex-col items-center justify-center gap-7">
-        <PayoffIllustration />
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15 }} className="text-center space-y-3">
-          <h2 className="text-[34px] font-extrabold text-[#2E2A27] tracking-tight leading-tight" style={JK}>
-            {"You're"} all set!
-          </h2>
-          <p className="text-[15px] text-[#8C8681] leading-relaxed max-w-[256px]" style={INTER}>
-            Snap your first past question and start your CBT simulation today
-          </p>
-        </motion.div>
-      </motion.div>
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.3 }} className="w-full space-y-3">
-        <PrimaryBtn label="Take Me to PastQ" onClick={() => { onComplete(); nav("home"); }} />
-        <p className="text-center text-[13px] text-[#94A3B8]" style={INTER}>Your exam simulator is ready</p>
-      </motion.div>
-    </div>
-  );
-}
-
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1478,6 +1106,7 @@ export default function App() {
   // Answers remain hidden until the session is submitted.
   const [practiceMode, setPracticeMode] = useState(false);
   const [visionSessionId, setVisionSessionId] = useState<string | null>(null);
+  const [reviewMaterial, setReviewMaterial] = useState<{ id: string; name?: string; groups?: any[] } | null>(null);
   const [uploadDraft, setUploadDraft] = useState<UploadDraft>({ files: [], name: "" });
 
   const [timeTaken, setTimeTaken] = useState(0);
@@ -1485,6 +1114,9 @@ export default function App() {
   const [userEmail, setUserEmail] = useState("");
   const [userAvatar, setUserAvatar] = useState("");
   const [userId, setUserId] = useState("");
+  const [studyPreferences, setStudyPreferences] = useState<StudyPreferences | null>(null);
+  const [undergraduate, setUndergraduate] = useState<boolean | null>(null);
+  const authenticatedUser = useRef<string | null>(null);
   const [sessions, setSessions] = useState<any[]>([]);
   const [offlineLibrary, setOfflineLibrary] = useState<any[]>([]);
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
@@ -1570,26 +1202,44 @@ export default function App() {
   };
 
   const refreshOfflineLibrary = async () => {
+    const ownerId = authenticatedUser.current;
     try {
-      const lib = await getOfflineLibrary();
-      setOfflineLibrary(lib || []);
+      const lib = await getOfflineLibrary(ownerId || undefined);
+      if (authenticatedUser.current !== ownerId) return;
+      setOfflineLibrary(lib);
+      if (ownerId) {
+        const saved = await getSavedMaterials();
+        if (authenticatedUser.current !== ownerId) return;
+        const local = new Map(lib.map(item => [item.id, item]));
+        const merged = saved.map(item => {
+          const cached = local.get(item.id);
+          return cached && cached.updatedAt >= item.updatedAt ? cached : { ...item, ownerId };
+        });
+        setOfflineLibrary([...merged, ...lib.filter(item => !saved.some(remote => remote.id === item.id))]);
+      }
     } catch {}
   };
 
   const openBundle = async (bundle: any) => {
     try {
-      const fresh = (await getOfflineBundle(bundle.id)) || bundle;
+      const ownerId = authenticatedUser.current;
+      const cached = await getOfflineBundle(bundle.id, ownerId || undefined);
+      if (authenticatedUser.current !== ownerId) return;
+      let fresh = cached && (!bundle.updatedAt || cached.updatedAt >= bundle.updatedAt) ? cached : bundle;
+      if (fresh.sourceSessionId && !fresh.questions?.length) {
+        fresh = { ...await getSavedMaterial(fresh.sourceSessionId), ownerId };
+        if (authenticatedUser.current !== ownerId) return;
+        try { await saveBundle({ ...fresh, ownerId }); } catch { /* Server copy is saved even when device storage is full. */ }
+        if (authenticatedUser.current !== ownerId) return;
+      }
       const qs = Array.isArray(fresh?.questions) ? fresh.questions : [];
       if (!qs.length) {
         alert("This download has no saved questions yet. Re-extract or re-download it.");
         return;
       }
-      if (fresh.manufacturer || fresh.university || fresh.examType) {
-        setCustomizeBundle({
-          ...fresh,
-          questions: qs,
-        });
-        setScreen("customize-cbt");
+      setCustomizeBundle({ ...fresh, questions: qs });
+      setScreen("customize-cbt");
+      if (!fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
         // Background revalidation: offline copy may predate server additions.
         // Silently upgrade if the API bundle has more questions.
         getBundleFromApi(bundle.id)
@@ -1597,15 +1247,11 @@ export default function App() {
             const liveQs = Array.isArray(live?.questions) ? live.questions : [];
             if (liveQs.length > qs.length) {
               const saved = await saveBundle(live);
-              setCustomizeBundle({ ...saved, questions: saved.questions });
               await refreshOfflineLibrary();
             }
           })
           .catch(() => {});
-        return;
       }
-      setPracticeSource({ bundleId: String(fresh.id || bundle.id), version: fresh.updatedAt || fresh.updated_at || null });
-      loadQuestions(qs as Q[], "review-questions");
     } catch (e) {
       console.error(e);
       alert("Could not open this material.");
@@ -1629,33 +1275,55 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const unsub = listenToAuth(async (user) => {
+    let active = true;
+    let revision = 0;
+    const unsub = listenToAuth(async (user, event) => {
+      const request = ++revision;
+      const previousUser = authenticatedUser.current;
+      authenticatedUser.current = user?.id || null;
+      if (!active) return;
+      if (previousUser && previousUser !== user?.id) {
+        setActiveQuestions(DEMO_QUESTIONS); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
+        setFlagged(Array(DEMO_QUESTIONS.length).fill(false)); setCurrentQ(0);
+        setCustomizeBundle(null); setReviewMaterial(null); setVisionSessionId(null);
+        setUploadDraft({ files: [], name: '' }); setOfflineLibrary([]); setSessions([]);
+        setScreen(prev => !user && prev === 'change-password' ? prev : user ? 'splash' : 'login');
+      }
+      if (event === 'PASSWORD_RECOVERY' && user) setScreen('change-password');
       if (user) {
         setUserName(user.user_metadata?.full_name || user.email?.split("@")[0] || "Student");
         setUserEmail(user.email || "");
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
+        const preferences = readStudyPreferences(user.user_metadata);
+        setStudyPreferences(preferences);
+        setUndergraduate(preferences?.undergraduate ?? null);
+        setScreen((prev) => {
+          if (prev === "splash" || prev === "login" || prev === "signup") {
+            // The legacy profile flag predates the personalized study choice.
+            // Only a saved choice (including Explore) completes this onboarding.
+            return preferences ? "home" : "onboarding";
+          }
+          return prev;
+        });
         let profile = null;
         try { profile = await getUserProfile(user.id); } catch {}
         if (!profile) {
           try { profile = await createUserProfile(user.id, user.email || "", user.user_metadata?.full_name || ""); } catch {}
         }
+        if (!active || request !== revision || authenticatedUser.current !== user.id) return;
 
-        setScreen((prev) => {
-          if (prev === "splash" || prev === "login" || prev === "signup") {
-            return "home";
-          }
-          return prev;
-        });
+
         // Fetch real sessions from Supabase (silently fail if table missing)
         try {
           const history = await getUserHistory(user.id);
+          if (!active || request !== revision) return;
           setSessions(history || []);
         } catch {}
         // Load offline library from IndexedDB
         try {
-          const lib = await getOfflineLibrary();
-          setOfflineLibrary(lib || []);
+          await refreshOfflineLibrary();
+          if (!active || request !== revision) return;
         } catch {}
         // Fetch global library from the Hostinger API.
         try {
@@ -1668,9 +1336,12 @@ export default function App() {
         setUserEmail("");
         setUserAvatar("");
         setUserId("");
+        setStudyPreferences(null);
+        setUndergraduate(null);
+        setScreen(prev => prev === "onboarding" ? "login" : prev);
       }
     });
-    return () => unsub();
+    return () => { active = false; revision++; authenticatedUser.current = null; unsub(); };
   }, []);
 
   const nav = (s: Screen) => {
@@ -1765,18 +1436,19 @@ export default function App() {
 
   const renderScreen = () => {
     switch (screen) {
-      case "splash": return <StudyWelcome onStart={startDemo} onBrowse={() => { setScreen("home"); setNavTab("library"); }} onSignup={() => nav("signup")} onLogin={() => nav("login")} />;
+      case "splash": return <AppWelcome onSignup={() => nav("signup")} onLogin={() => nav("login")} />;
       case "signup": return <AuthScreen key="signup" mode="signup" nav={nav} />;
       case "login": return <AuthScreen key="login" mode="login" nav={nav} />;
       case "forgot-password": return <AuthScreen key="reset" mode="reset" nav={nav} />;
-      // onboarding screens removed — users go directly to home after signup
-      // case "onboard-name", "onboard-1" ... "onboard-5" all removed
+      case "change-password": return <AuthScreen key="recovery" mode="recovery" nav={nav} />;
+      case "onboarding": return <OnboardingScreen key={userId || "pending"} name={userName} undergraduate={undergraduate} onComplete={preferences => { setStudyPreferences(preferences); setUndergraduate(preferences.undergraduate); nav("home"); }} />;
       case "home": return (
         <HomeScreen
           nav={nav}
           tab={navTab}
           onTab={handleNavTab}
           userName={userName}
+          studyPreferences={studyPreferences}
           sessions={sessions}
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
@@ -1795,7 +1467,8 @@ export default function App() {
         <ProcessingScreen
           nav={nav}
           sessionId={visionSessionId}
-          onQuestionsReady={(qs) => {
+          onQuestionsReady={(qs, meta) => {
+            setReviewMaterial({ id: meta?.sessionId || visionSessionId || '', name: meta?.name, groups: meta?.groups });
             setPracticeSource({ bundleId: `vision:${visionSessionId || "draft"}`, version: null });
             loadQuestions(qs as Q[], "review-questions");
             // Open the prepared material immediately while the library refreshes.
@@ -1808,19 +1481,17 @@ export default function App() {
           nav={nav}
           questions={activeQuestions}
           onUpdateQuestions={setActiveQuestions}
-          onStartTest={(duration, selected) => {
-            const ordered = sortQuestions(selected ?? activeQuestions);
-            if (!ordered.length) return;
-            setPracticeMode(false);
-            setActiveQuestions(ordered);
-            setAnswers(Array(ordered.length).fill(null));
-            setFlagged(Array(ordered.length).fill(false));
-            setCurrentQ(0);
-            setExamDuration(duration);
-            setTimeLeft(duration);
-            submitted.current = false;
-            setShowModal(false);
-            setScreen("exam");
+          onSave={async () => {
+            const ownerId = authenticatedUser.current;
+            if (!ownerId || !reviewMaterial?.id) throw new Error('Please sign in again to save this material.');
+            const saved = await confirmVisionMaterial(reviewMaterial.id, activeQuestions);
+            if (authenticatedUser.current !== ownerId) return;
+            const material = { ...saved, ownerId };
+            try { await saveBundle(material); } catch { /* The confirmed server copy remains available. */ }
+            if (authenticatedUser.current !== ownerId) return;
+            setCustomizeBundle(material);
+            setScreen('customize-cbt');
+            void refreshOfflineLibrary();
           }}
         />
       );
@@ -1828,6 +1499,7 @@ export default function App() {
         <CustomizeCbtScreen
           key={String(customizeBundle.id || "bundle")}
           bundle={customizeBundle}
+          onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
             setPracticeMode(mode === "practice");
             const sourceBundleId = String(customizeBundle.id || "library");
@@ -1882,13 +1554,16 @@ export default function App() {
           practice={practiceMode}
         />
       );
-      case "results": return <StudyResults questions={activeQuestions} timeTaken={timeTaken} answers={answers} nav={destination => { nav(destination); if (destination === "home") setNavTab("library"); }} onPracticeMissed={() => {
+      case "results": return <StudyResults questions={activeQuestions} timeTaken={timeTaken} answers={answers} nav={destination => {
+        if (destination === 'exam') { setCustomizeBundle({ ...customizeBundle, id: practiceSource.bundleId, questions: activeQuestions }); setScreen('customize-cbt'); return; }
+        nav(destination); if (destination === "home") setNavTab("library");
+      }} onPracticeMissed={() => {
         const missed = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] !== answerIndex(q));
         if (!missed.length) return;
         setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed });
         setScreen("customize-cbt");
       }} />;
-      case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={nav} review />;
+      case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
       case "preference": return <ProfileScreen nav={nav} tab={navTab} onTab={handleNavTab} userName={userName} userEmail={userEmail} userAvatar={userAvatar} sessions={sessions} />;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <StudyPreferencesScreen nav={nav} theme={theme} onTheme={setTheme} />;

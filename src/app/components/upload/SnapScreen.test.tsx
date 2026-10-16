@@ -50,7 +50,8 @@ describe('camera and upload interactions', () => {
   it('shows upload guidance on computers and keeps a native rear-camera input for phones', async () => {
     vi.stubGlobal('navigator', { userAgent: 'Windows NT 10.0', mediaDevices: { getUserMedia } });
     await mount();
-    expect(container.textContent).toContain('Please upload your question paper, or use your phone to take a photo.');
+    expect(container.querySelector('h1')?.textContent).toBe('Upload material');
+    expect(container.textContent).toContain('Photos, PDF or text');
     expect(container.querySelector('video')).toBeNull();
     expect([...container.querySelectorAll('button')].some(element => element.textContent === 'Take a photo')).toBe(false);
     expect(container.querySelector('input[capture="environment"]')?.getAttribute('accept')).toBe('image/*');

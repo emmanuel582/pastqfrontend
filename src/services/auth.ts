@@ -16,7 +16,8 @@ export const registerUser = async (email: string, pass: string, name: string) =>
   }
 
   if (data.session) {
-    await supabase.auth.setSession(data.session);
+    const { error } = await supabase.auth.setSession(data.session);
+    if (error) throw error;
   }
 
   return data.user;
@@ -37,7 +38,8 @@ export const loginUser = async (email: string, pass: string) => {
   }
 
   if (data.session) {
-    await supabase.auth.setSession(data.session);
+    const { error } = await supabase.auth.setSession(data.session);
+    if (error) throw error;
   }
 
   return data.user;
@@ -74,11 +76,17 @@ export const sendPasswordReset = async (email: string) => {
   if (error) throw error;
 };
 
-export const listenToAuth = (callback: (user: any) => void) => {
-  const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-    callback(session?.user || null);
+export const listenToAuth = (callback: (user: any, event?: string) => void) => {
+  let active = true;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    // Supabase auth callbacks run while its auth lock is held. Profile reads
+    // and token-refreshing requests must run after that callback returns.
+    const timer = setTimeout(() => { timers.delete(timer); if (active) callback(session?.user || null, event); }, 0);
+    timers.add(timer);
   });
   return () => {
+    active = false; timers.forEach(clearTimeout);
     data.subscription.unsubscribe();
   };
 };

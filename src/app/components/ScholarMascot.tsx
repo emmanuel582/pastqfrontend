@@ -4,11 +4,16 @@ import { scholarMotion, type ScholarFrame, type ScholarState } from '../../utils
 export type { ScholarState } from '../../utils/scholarMotion';
 const SPRITE_URL = '/pets/scholar/spritesheet.webp';
 
-export default function ScholarMascot({ state = 'study', compact = false }: { state?: ScholarState; compact?: boolean }) {
+function stillPose(state: ScholarState): ScholarFrame {
+  return { row: state === 'study' || state === 'celebrate' ? 8 : 0,
+    frame: state === 'celebrate' ? 5 : 0, hold: 0, blend: 380, action: 'still' };
+}
+
+export default function ScholarMascot({ state = 'study', compact = false, animated = false }: { state?: ScholarState; compact?: boolean; animated?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [motion, setMotion] = useState<{ poses: [ScholarFrame, ScholarFrame]; active: 0 | 1 }>(() => {
-    const first = scholarMotion(state, 0)[0];
+    const first = animated ? scholarMotion(state, 0)[0] : stillPose(state);
     return { poses: [first, first], active: 0 };
   });
   const intent = useRef(state);
@@ -24,8 +29,9 @@ export default function ScholarMascot({ state = 'study', compact = false }: { st
   }
   useEffect(() => {
     intent.current = state;
-    if (state === 'celebrate') celebrateNow.current?.();
-  }, [state]);
+    if (!animated) setPose(stillPose(state));
+    else if (state === 'celebrate') celebrateNow.current?.();
+  }, [state, animated]);
   useEffect(() => {
     let active = true;
     const sprite = new Image();
@@ -35,7 +41,7 @@ export default function ScholarMascot({ state = 'study', compact = false }: { st
     return () => { active = false; };
   }, []);
   useEffect(() => {
-    if (!loaded || failed) return;
+    if (!loaded || failed || !animated) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let timer: ReturnType<typeof setTimeout>;
     let turn = 0;
@@ -71,12 +77,12 @@ export default function ScholarMascot({ state = 'study', compact = false }: { st
     document.addEventListener('visibilitychange', show);
     reduced.addEventListener?.('change', show);
     return () => { clearTimeout(timer); celebrateNow.current = null; document.removeEventListener('visibilitychange', show); reduced.removeEventListener?.('change', show); };
-  }, [loaded, failed]);
+  }, [loaded, failed, animated]);
   const style = {
     '--scholar-row': pose.row, '--scholar-frame': pose.frame,
     '--scholar-blend': `${pose.blend}ms`,
   } as CSSProperties;
-  return <div className={`scholar-scene ${compact ? 'scholar-compact' : ''}`} aria-hidden="true">
+  return <div className={`scholar-scene ${compact ? 'scholar-compact' : ''}`} data-animated={animated} aria-hidden="true">
     {!compact && <svg className="scholar-books" viewBox="0 0 360 320" fill="none">
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58z" fill="var(--study-panel)" />
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58zM43 257h48m-51 14h61m163-4h53m-44-15h39" stroke="var(--study-art-ink)" strokeOpacity=".35" strokeWidth="1.2" />
