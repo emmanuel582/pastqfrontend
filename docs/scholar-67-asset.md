@@ -1,0 +1,7 @@
+# Scholar account pose
+
+Final app asset: `public/pets/scholar/67.webp` in the standalone frontend (`client/public/pets/scholar/67.webp` in the combined workspace). Prepared with the built-in imagegen tool, using the supplied six-seven strip as the edit target. The right hand is raised; the glass greeting sits on the opposite side. The generated transparent PNG was encoded to WebP for the app.
+
+Exact generation prompt:
+
+> Use case: background-extraction / identity-preserve. Edit target: supplied sprite strip of PastQ's Scholar mascot. Create ONE clean full-body transparent cutout of the THIRD pose from the LEFT in the strip: the exact same youthful male student with curly dark hair, green varsity jacket, white shirt, navy trousers, white sneakers and burgundy backpack; his palm on the VIEWER'S RIGHT is held upward in a relaxed 67 explanatory gesture and the hand on the VIEWER'S LEFT is lower. Preserve this character's face, proportions, outfit, 3D illustration style and friendly expression faithfully. One character only, standing fully in frame, feet visible, no clipping. Remove all magenta background and colored edge spill, genuine transparent alpha. No other poses, no strip, no text, no bubbles, no scenery, no props, no watermark. Intended asset is the existing app's Create account mascot, with a UI speech bubble separately placed to the VIEWER'S LEFT, so keep that side above the low hand clear. This is an edit of existing art, not a redesign.

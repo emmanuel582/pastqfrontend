@@ -9,8 +9,10 @@
 
 .auth-greeting-scene { --greeting-size:300px; position:relative; width:100%; height:310px; }
 .auth-greeting-scene .welcome-scholar { left:auto; right:0; height:var(--greeting-size); }
+.auth-greeting-scene .scholar-account-pose { position:absolute; top:0; right:0; height:var(--greeting-size); width:calc(var(--greeting-size) * .666667); object-fit:contain; }
 .scholar-speech { --speech-edge:rgba(255,255,255,.18); position:absolute; z-index:1; left:0; top:calc(var(--greeting-size) * .04); width:calc(100% - var(--greeting-size) * .24 - 50px); padding:16px 18px; border:1px solid var(--speech-edge); border-radius:22px; background:linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.025)); color:var(--study-ink); font-family:'Outfit','Manrope',sans-serif; font-size:23px; font-weight:400; line-height:1.25; letter-spacing:-.025em; overflow-wrap:anywhere; -webkit-backdrop-filter:blur(18px) saturate(120%); backdrop-filter:blur(18px) saturate(120%); box-shadow:inset 0 1px rgba(255,255,255,.13),0 10px 30px rgba(0,0,0,.06); }
 .scholar-speech>span:first-child { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+.auth-greeting-scene .scholar-speech { left:max(0px,calc(100% - var(--greeting-size) * .333334 - 200px)); width:clamp(105px,calc(100% - var(--greeting-size) * .333334 - 52px),148px); padding:13px 16px; font-size:19px; }
 .scholar-speech-dots { position:absolute; left:100%; top:calc(var(--greeting-size) * .12 - 4px); }
 .scholar-speech-dots i { position:absolute; display:block; border-radius:50%; border:1px solid var(--speech-edge); background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.035)); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); }
 .scholar-speech-dots i:nth-child(1) { width:14px; height:10px; left:8px; top:0; }

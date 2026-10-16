@@ -29,3 +29,5 @@ npm audit --audit-level=high
 Tests use public test placeholders for Supabase configuration; they do not create real accounts. Production needs the actual public Supabase settings and backend origin.
 
 See [deployment instructions](DEPLOY.md) and [release checks](docs/production-readiness.md). The matching API is maintained in https://github.com/emmanuel582/pastqbackend.
+
+Preferences now contains real progress, device theme settings and opt-in study reminders. See [reminder setup and device checks](docs/study-reminders.md) before enabling production delivery.

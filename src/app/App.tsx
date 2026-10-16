@@ -8,6 +8,8 @@ import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
 import ProcessingScreen from "./components/ProcessingScreen";
 import ScholarMascot from "./components/ScholarMascot";
 import AppWelcome from "./components/AppWelcome";
+import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
+import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
 import SnapScreen, { type UploadDraft } from "./components/upload/SnapScreen";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -17,7 +19,7 @@ import {
   ChevronRight, Plus, FileText, Shield, Star, Info, Twitter, Github, Library, Search, Download,
   Calculator, PenLine, Eraser, Trash2, Undo2, Send, ZoomIn, ZoomOut, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { listenToAuth, logoutUser } from "../services/auth";
+import { listenToAuth } from "../services/auth";
 
 import { getUserHistory, saveExamSession, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
 import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
@@ -156,7 +158,7 @@ const INTER = { fontFamily: "'Outfit', sans-serif" };
 function BottomNav({ tab, onTab, onSnap }: { tab: NavTab; onTab: (t: NavTab) => void; onSnap: () => void }) {
   const items: { id: NavTab; label: string; Icon: React.ElementType }[] = [
     { id: "home", label: "Home", Icon: Home }, { id: "library", label: "Library", Icon: Library },
-    { id: "lead", label: "Progress", Icon: Clock }, { id: "preference", label: "Profile", Icon: User },
+    { id: "lead", label: "Progress", Icon: Clock }, { id: "preference", label: "Preferences", Icon: User },
   ];
   return (
     <nav className="study-bottom-nav" aria-label="Main navigation">
@@ -207,6 +209,7 @@ function HomeScreen({
   tab,
   onTab,
   userName,
+  reminderSearch,
   sessions,
   offlineLibrary,
   globalLibrary,
@@ -222,6 +225,7 @@ function HomeScreen({
   tab: NavTab;
   onTab: (t: NavTab) => void;
   userName: string;
+  reminderSearch: string;
   sessions: any[];
   offlineLibrary: any[];
   globalLibrary: any[];
@@ -239,6 +243,8 @@ function HomeScreen({
         {tab === "home" && <StudyHome name={userName} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
           <StudyLibrary
+            key={reminderSearch}
+            initialSearch={reminderSearch}
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
             catalog={libraryCatalog}
@@ -643,178 +649,6 @@ function ReviewQuestionsScreen({
  * What the book says about a question, in whatever form it gives it: an answer
  * with an explanation, an answer only, or nothing at all.
  */
-function ProfileScreen({ nav, tab, onTab, userName, userEmail, userAvatar, sessions }: {
-  nav: (s: Screen) => void;
-  tab: NavTab;
-  onTab: (t: NavTab) => void;
-  userName: string;
-  userEmail: string;
-  userAvatar: string;
-  sessions: any[];
-}) {
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [remindersEnabled, setRemindersEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState("08:00");
-  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
-
-  const displayName = userName || "User Profile";
-  const initials = displayName.split(" ").map((word: string) => word[0]).join("").slice(0, 2).toUpperCase();
-  const completedTests = sessions.length;
-  const avgScore = completedTests ? Math.round(sessions.reduce((sum: number, s: any) => sum + pct(s.score, s.total_questions), 0) / completedTests) : null;
-  const bestScore = completedTests ? Math.max(...sessions.map((s: any) => pct(s.score, s.total_questions))) : null;
-
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0] relative">
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-5 pt-4 pb-6 space-y-4">
-          <div className="overflow-hidden rounded-[28px] border border-[#EADFD3] bg-white shadow-sm mb-4">
-            <div className="px-5 pt-6 pb-5">
-              <div className="flex items-center gap-4">
-                {userAvatar ? (
-                  <img src={userAvatar} alt="Profile" className="h-[52px] w-[52px] rounded-[18px] object-cover flex-shrink-0" />
-                ) : (
-                  <div className="flex h-[52px] w-[52px] items-center justify-center rounded-[18px] bg-[#E67468] text-[20px] font-bold text-white flex-shrink-0" style={JK}>
-                    {initials || "U"}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-[16px] font-bold text-[#2E2A27] truncate" style={JK}>{displayName}</p>
-                    <p className="text-[13px] text-[#8C8681] truncate" style={INTER}>{userEmail || ""}</p>
-                  </div>
-                  <div className="mt-1.5">
-                    <span className="inline-flex rounded-md bg-[#F5E8E7] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#E67468]">Candidate</span>
-                  </div>
-                </div>
-                <button onClick={() => nav("profile-edit")} className="flex h-9 w-9 items-center justify-center rounded-full border border-[#EADFD3] bg-[#FAF6F0] flex-shrink-0">
-                  <Edit2 size={15} color="#8C8681" />
-                </button>
-              </div>
-            </div>
-
-            <div className="mx-5 mb-6 grid grid-cols-3 gap-2.5">
-              {[{ label: "Tests Taken", value: completedTests ? completedTests.toString() : "—" }, { label: "Avg. Score", value: avgScore !== null ? `${avgScore}%` : "—" }, { label: "Best Score", value: bestScore !== null ? `${bestScore}%` : "—" }].map(({ label, value }) => (
-                <div key={label} className="rounded-[16px] border border-[#EADFD3] bg-white py-3 px-2 text-center shadow-sm">
-                  <p className="text-[16px] font-bold text-[#2E2A27]" style={JK}>{value}</p>
-                  <p className="mt-1 text-[10px] text-[#8C8681] font-medium" style={INTER}>{label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-[#EADFD3] bg-white p-5 shadow-sm">
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-[15px] font-bold text-[#2E2A27]" style={JK}>History</h3>
-              <button onClick={() => { onTab("lead"); nav("home"); }} className="text-[12px] font-semibold text-[#E67468]">View all</button>
-            </div>
-            {sessions.length === 0 ? (
-              <div className="py-4 text-center">
-                <p className="text-[13px] font-medium text-[#8C8681]" style={INTER}>No history found</p>
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {sessions.slice(0, 3).map((s: any) => {
-                  const p = pct(s.score, s.total_questions);
-                  return (
-                    <div key={s.id} className="rounded-2xl border border-[#EADFD3] bg-[#FAF6F0] p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold text-[#2E2A27]" style={JK}>{s.title}</p>
-                          <p className="mt-1 text-[11px] text-[#94A3B8]" style={INTER}>{new Date(s.completed_at).toLocaleDateString()}</p>
-                        </div>
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${sBadge(p)}`}>{p}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-[24px] border border-[#EADFD3] bg-white shadow-sm overflow-hidden">
-            <div className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-[#F1F5F9]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5E8E7]">
-                <Bell size={16} color="#E67468" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>Notifications</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Turn app alerts on or off</p>
-              </div>
-              <button onClick={() => setNotificationsEnabled(value => !value)} className="h-7 w-12 rounded-full p-[3px] transition-all" style={{ background: notificationsEnabled ? "#E67468" : "#E5E7EB" }}>
-                <span className="block h-5 w-5 rounded-full bg-white shadow-sm transition-transform" style={{ transform: notificationsEnabled ? "translateX(100%)" : "translateX(0)" }} />
-              </button>
-            </div>
-            <button onClick={() => nav("settings-preferences")} className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-[#F1F5F9] text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5E8E7]">
-                <BookOpen size={16} color="#E67468" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>Study Preferences</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Appearance, study plan and goals</p>
-              </div>
-              <ChevronRight size={16} color="#94A3B8" />
-            </button>
-            <button onClick={() => nav("settings-reminders")} className="w-full px-4 py-3.5 flex items-center gap-3 text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5E8E7]">
-                <Clock size={16} color="#E67468" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>Exam Reminders</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Manage your exam alerts</p>
-              </div>
-              <ChevronRight size={16} color="#94A3B8" />
-            </button>
-          </div>
-
-          <div className="rounded-[24px] border border-[#EADFD3] bg-white shadow-sm overflow-hidden">
-            <button onClick={() => nav("about")} className="w-full px-4 py-3.5 flex items-center gap-3 border-b border-[#F1F5F9] text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5E8E7]">
-                <User size={16} color="#E67468" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>About PastQ</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Learn more about the app</p>
-              </div>
-              <ChevronRight size={16} color="#94A3B8" />
-            </button>
-            <button onClick={() => nav("support")} className="w-full px-4 py-3.5 flex items-center gap-3 text-left">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#F5E8E7]">
-                <AlertTriangle size={16} color="#E67468" />
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>Help & Support</p>
-                <p className="mt-0.5 text-[12px] text-[#8C8681]" style={INTER}>Get help with your account</p>
-              </div>
-              <ChevronRight size={16} color="#94A3B8" />
-            </button>
-          </div>
-
-          <button onClick={() => setShowSignOutConfirm(true)} className="w-full rounded-2xl border border-[#FECACA] bg-white py-4 flex items-center justify-center gap-2 shadow-sm">
-            <LogOut size={17} color="#EF4444" />
-            <span className="text-[15px] font-semibold text-[#EF4444]" style={JK}>Sign Out</span>
-          </button>
-
-          <p className="text-center text-[11px] text-[#CBD5E1]" style={INTER}>PastQ v1.0.0</p>
-        </div>
-      </div>
-
-      {showSignOutConfirm && (
-        <div className="absolute inset-0 z-20 flex items-end bg-black/35 px-4 pb-4">
-          <div className="w-full rounded-[24px] border border-[#EADFD3] bg-white p-5 shadow-2xl">
-            <p className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Sign out?</p>
-            <p className="mt-2 text-[13px] text-[#8C8681]" style={INTER}>You’ll need to sign in again to continue using PastQ.</p>
-            <div className="mt-4 flex gap-3">
-              <button onClick={() => setShowSignOutConfirm(false)} className="flex-1 rounded-2xl border border-[#EADFD3] bg-[#FAF6F0] px-4 py-3 text-[14px] font-semibold text-[#2E2A27]">Cancel</button>
-              <button onClick={async () => { setShowSignOutConfirm(false); await logoutUser(); nav("login"); }} className="flex-1 rounded-2xl bg-[#EF4444] px-4 py-3 text-[14px] font-semibold text-white">Yes, Sign Out</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <BottomNav tab={tab} onTab={onTab} onSnap={() => nav("snap")} />
-    </div>
-  );
-}
 
 function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }: { nav: (s: Screen) => void; userName: string; setUserName: (n: string) => void; userEmail: string; userAvatar: string }) {
   const [name, setName] = useState(userName || "I");
@@ -898,167 +732,8 @@ function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }
   );
 }
 
-function StudyPreferencesScreen({ nav, theme, onTheme }: { nav: (s: Screen) => void; theme: StudyTheme; onTheme: (theme: StudyTheme) => void }) {
-  const [focus, setFocus] = useState("Entrance exams");
-  const [time, setTime] = useState("1-2");
 
-  return (
-    <main className="study-app preferences-screen">
-      <header className="study-topbar preferences-header">
-        <h1>Preferences</h1>
-      </header>
-      <div className="preferences-content">
-        <section className="preference-section">
-          <h2>Appearance</h2>
-          <p>Make this space feel right for you.</p>
-          <div className="theme-choices" role="radiogroup" aria-label="Colour theme" onKeyDown={event => {
-            if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            const modes: StudyTheme[] = ["system", "light", "dark"];
-            const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-            const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? 2 : (modes.indexOf(theme) + direction + modes.length) % modes.length;
-            const next = modes[nextIndex];
-            onTheme(next);
-            event.currentTarget.querySelectorAll<HTMLButtonElement>("button")[nextIndex]?.focus();
-          }}>
-            {(["system", "light", "dark"] as const).map(mode => (
-              <button key={mode} role="radio" tabIndex={theme === mode ? 0 : -1} aria-checked={theme === mode} className={`theme-choice theme-choice-${mode} ${theme === mode ? "selected" : ""}`} onClick={() => onTheme(mode)}>
-                <span className={`theme-preview theme-preview-${mode}`} aria-hidden="true">{mode === "system" ? <Monitor size={38} strokeWidth={1.2} /> : <><span className="preview-heading" /><span className="preview-line" /><span className="preview-paper"><i /><i /><b /></span></>}</span>
-                <span className="theme-choice-label"><strong>{mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}</strong><span className="theme-radio">{theme === mode && <Check size={13} strokeWidth={3} />}</span></span>
-              </button>
-            ))}
-          </div>
-          <span className="preference-note">{theme === "system" ? "Follows your device automatically." : "Saved automatically on this device."}</span>
-        </section>
-        <section className="preference-section">
-          <h2>Exam focus</h2>
-          <div className="preference-options" role="radiogroup" aria-label="Exam focus">
-            {["Entrance exams", "Secondary school exams", "University exams", "Professional exams"].map(opt => <button key={opt} role="radio" aria-checked={focus === opt} onClick={() => setFocus(opt)}><span>{opt}</span><span className={`theme-radio ${focus === opt ? "selected" : ""}`}>{focus === opt && <Check size={13} strokeWidth={3} />}</span></button>)}
-          </div>
-        </section>
-        <section className="preference-section">
-          <h2>Daily study goal</h2>
-          <div className="preference-options" role="radiogroup" aria-label="Daily study goal">
-            {[{ id: "lt1", label: "Less than 1 hour" }, { id: "1-2", label: "1–2 hours" }, { id: "3-4", label: "3–4 hours" }].map(opt => <button key={opt.id} role="radio" aria-checked={time === opt.id} onClick={() => setTime(opt.id)}><span>{opt.label}</span><span className={`theme-radio ${time === opt.id ? "selected" : ""}`}>{time === opt.id && <Check size={13} strokeWidth={3} />}</span></button>)}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
 
-function ExamRemindersScreen({ nav }: { nav: (s: Screen) => void }) {
-  const [reminders, setReminders] = useState<{ id: string; time: string; enabled: boolean }[]>([
-    { id: "1", time: "08:00", enabled: true }
-  ]);
-
-  const addReminder = () => {
-    setReminders([...reminders, { id: Date.now().toString(), time: "12:00", enabled: true }]);
-  };
-
-  const toggleReminder = (id: string) => {
-    setReminders(reminders.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r));
-  };
-
-  const updateTime = (id: string, time: string) => {
-    setReminders(reminders.map(r => r.id === id ? { ...r, time } : r));
-  };
-
-  const deleteReminder = (id: string) => {
-    setReminders(reminders.filter(r => r.id !== id));
-  };
-
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Exam Reminders</h2>
-          <p className="text-[12px] text-[#8C8681]" style={INTER}>Manage reminder settings</p>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
-        {reminders.map(r => (
-          <div key={r.id} className="bg-white rounded-[20px] border border-[#EADFD3] p-4 shadow-sm flex items-center gap-4">
-            <div className="flex-1">
-              <input type="time" value={r.time} onChange={(e) => updateTime(r.id, e.target.value)}
-                className="text-[24px] font-bold text-[#2E2A27] bg-transparent outline-none w-full" style={MONO} />
-              <p className="text-[12px] text-[#8C8681] mt-1" style={INTER}>Daily reminder</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => toggleReminder(r.id)} className="h-7 w-12 rounded-full p-[3px] transition-all" style={{ background: r.enabled ? "#E67468" : "#E5E7EB" }}>
-                <span className="block h-5 w-5 rounded-full bg-white shadow-sm transition-transform" style={{ transform: r.enabled ? "translateX(100%)" : "translateX(0)" }} />
-              </button>
-              <button onClick={() => deleteReminder(r.id)} className="w-9 h-9 flex items-center justify-center rounded-full bg-[#FEF2F2] hover:bg-[#FEE2E2] transition-colors">
-                <X size={16} color="#EF4444" />
-              </button>
-            </div>
-          </div>
-        ))}
-
-        <button onClick={addReminder} className="w-full py-4 rounded-[20px] border-[1.5px] border-dashed border-[#E67468] text-[#E67468] text-[15px] font-bold flex items-center justify-center gap-2 bg-[#F5E8E7]/50 hover:bg-[#F5E8E7] transition-all" style={JK}>
-          <Plus size={18} strokeWidth={2.5} /> Add Another Reminder
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AboutScreen({ nav }: { nav: (s: Screen) => void }) {
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>About PastQ</h2>
-          <p className="text-[12px] text-[#8C8681]" style={INTER}>Learn more about the app</p>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6">
-        <div className="flex flex-col items-center text-center">
-          <div className="w-20 h-20 bg-gradient-to-br from-[#E67468] to-[#D45B4F] rounded-[24px] flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
-            <BookOpen size={32} color="white" />
-          </div>
-          <h1 className="text-[22px] font-bold text-[#2E2A27]" style={JK}>PastQ</h1>
-          <p className="text-[14px] text-[#E67468] font-bold mt-1" style={MONO}>v1.0.2</p>
-          <p className="text-[13px] text-[#8C8681] mt-3 leading-relaxed px-4" style={INTER}>
-            Your ultimate study companion. We make exam preparation simple, fast, and effective for students everywhere.
-          </p>
-        </div>
-
-        <div className="bg-white rounded-[24px] border border-[#EADFD3] shadow-sm overflow-hidden">
-          {[
-            { icon: <Star size={16} color="#7A6CB2" />, label: "Rate PastQ", sub: "Love the app? Let us know!" },
-            { icon: <FileText size={16} color="#E67468" />, label: "Terms of Service", sub: "Read our terms" },
-            { icon: <Shield size={16} color="#10B981" />, label: "Privacy Policy", sub: "How we protect your data" },
-          ].map((item, i, arr) => (
-            <button key={item.label} className={`w-full px-4 py-4 flex items-center gap-3 text-left ${i !== arr.length - 1 ? "border-b border-[#F1F5F9]" : ""}`}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FAF6F0] border border-[#EADFD3]">
-                {item.icon}
-              </div>
-              <div className="flex-1">
-                <p className="text-[14px] font-semibold text-[#2E2A27]" style={INTER}>{item.label}</p>
-                <p className="text-[12px] text-[#8C8681] mt-0.5" style={INTER}>{item.sub}</p>
-              </div>
-              <ChevronRight size={16} color="#94A3B8" />
-            </button>
-          ))}
-        </div>
-
-        <div className="flex justify-center gap-4 pt-2">
-          <button className="w-12 h-12 flex items-center justify-center rounded-full bg-white border border-[#EADFD3] shadow-sm text-[#1DA1F2]">
-            <Twitter size={20} />
-          </button>
-          <button className="w-12 h-12 flex items-center justify-center rounded-full bg-white border border-[#EADFD3] shadow-sm text-[#181717]">
-            <Github size={20} />
-          </button>
-        </div>
-
-        <p className="text-center text-[12px] text-[#94A3B8] pt-4" style={INTER}>
-          © 2026 PastQ App. All rights reserved.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; subtitle: string; nav: (s: Screen) => void; backTo: Screen }) {
   return (
@@ -1111,6 +786,9 @@ export default function App() {
   const [userEmail, setUserEmail] = useState("");
   const [userAvatar, setUserAvatar] = useState("");
   const [userId, setUserId] = useState("");
+  const [reminderSearch, setReminderSearch] = useState('');
+  const [reminderIntentVersion, setReminderIntentVersion] = useState(0);
+  const pendingReminder = useRef<{ subject: string } | null>(null);
   const [undergraduate, setUndergraduate] = useState<boolean | null>(null);
   const authenticatedUser = useRef<string | null>(null);
   const [sessions, setSessions] = useState<any[]>([]);
@@ -1120,6 +798,36 @@ export default function App() {
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
+
+  useEffect(() => {
+    const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) void syncStudyHistory([], owner).catch(() => {}); };
+    window.addEventListener('online', flush); document.addEventListener('visibilitychange', flush);
+    return () => { window.removeEventListener('online', flush); document.removeEventListener('visibilitychange', flush); };
+  }, []);
+
+  useEffect(() => {
+    function acceptReminder(value: string) {
+      try {
+        const url = new URL(value, window.location.origin);
+        if (url.origin !== window.location.origin || url.searchParams.get('reminder') !== 'study') return;
+        pendingReminder.current = { subject: (url.searchParams.get('subject') || '').slice(0, 100) };
+        setReminderIntentVersion(value => value + 1);
+        // A notification never interrupts a timed exam or bypasses onboarding.
+        setScreen(current => current === 'home' || current === 'preference' || current === 'settings-reminders' || current === 'settings-preferences' ? 'home' : current);
+        setReminderSearch(pendingReminder.current.subject);
+      } catch { /* Ignore malformed notification URLs. */ }
+    }
+    acceptReminder(window.location.href);
+    const receive = (event: MessageEvent) => { if (event.data?.type === 'PASTQ_OPEN_STUDY' && typeof event.data.url === 'string') acceptReminder(event.data.url); };
+    navigator.serviceWorker?.addEventListener('message', receive);
+    return () => navigator.serviceWorker?.removeEventListener('message', receive);
+  }, []);
+  useEffect(() => {
+    if (!userId || screen !== 'home' || !pendingReminder.current) return;
+    setReminderSearch(pendingReminder.current.subject); pendingReminder.current = null; setNavTab('library');
+    const url = new URL(window.location.href); url.searchParams.delete('reminder'); url.searchParams.delete('subject');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, [userId, screen, reminderSearch, reminderIntentVersion]);
 
   const refreshGlobalLibrary = async () => {
     setLibraryStatus("loading");
@@ -1277,8 +985,10 @@ export default function App() {
       const request = ++revision;
       const previousUser = authenticatedUser.current;
       authenticatedUser.current = user?.id || null;
+      void syncReminderDeviceOwner(user?.id || null).catch(() => {});
       if (!active) return;
       if (previousUser && previousUser !== user?.id) {
+        setReminderSearch(''); pendingReminder.current = null;
         setActiveQuestions(DEMO_QUESTIONS); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
         setFlagged(Array(DEMO_QUESTIONS.length).fill(false)); setCurrentQ(0);
         setCustomizeBundle(null); setReviewMaterial(null); setVisionSessionId(null);
@@ -1291,6 +1001,7 @@ export default function App() {
         setUserEmail(user.email || "");
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
+        void syncStudyHistory([], user.id).catch(() => {});
         const preferences = readStudyPreferences(user.user_metadata);
         setUndergraduate(preferences?.undergraduate ?? null);
         setScreen((prev) => {
@@ -1314,6 +1025,7 @@ export default function App() {
           const history = await getUserHistory(user.id);
           if (!active || request !== revision) return;
           setSessions(history || []);
+          void syncStudyHistory(history || [], user.id).catch(() => {});
         } catch {}
         // Load offline library from IndexedDB
         try {
@@ -1354,6 +1066,7 @@ export default function App() {
   };
 
   const handleNavTab = (t: NavTab) => {
+    setReminderSearch('');
     setNavTab(t);
     if (t === "preference") setScreen("preference");
     else setScreen("home");
@@ -1383,6 +1096,9 @@ export default function App() {
     setScreen("results");
     // Save to Supabase if user is logged in
     if (userId) {
+      const completedAt = new Date().toISOString(), resultId = crypto.randomUUID();
+      const title = [...new Set(activeQuestions.map(question => question.subject).filter(Boolean))].slice(0, 3).join(', ') || 'CBT Session';
+      void syncStudyHistory([{ id: resultId, completed_at: completedAt, total_questions: activeQuestions.filter(question => answerIndex(question) !== null).length, score: s, title, duration_seconds: examDuration - timeLeft }], userId).catch(() => {});
       try {
         const durationSeconds = examDuration - timeLeft;
         const attempts = activeQuestions.map((question, index) => ({
@@ -1405,8 +1121,10 @@ export default function App() {
         void recordAnonymousAttemptSummary(attempts.map(({ questionKey, isCorrect }) => ({ questionKey, isCorrect })))
           .catch((error) => console.warn("Anonymous recommendation summary was not recorded", error));
         await saveExamSession({
+          id: resultId,
           user_id: userId,
-          title: "CBT Session",
+          title,
+          completed_at: completedAt,
           score: s,
           total_questions: activeQuestions.length,
           answered_count: attempts.filter((attempt) => attempt.selectedOptionIndex != null).length,
@@ -1415,7 +1133,9 @@ export default function App() {
           source_bundle_version: practiceSource.version,
         });
         const history = await getUserHistory(userId);
+        if (authenticatedUser.current !== userId) return;
         setSessions(history || []);
+        void syncStudyHistory(history || [], userId).catch(() => {});
       } catch (e) { console.error("Failed to save session:", e); }
     }
   };
@@ -1442,6 +1162,7 @@ export default function App() {
           tab={navTab}
           onTab={handleNavTab}
           userName={userName}
+          reminderSearch={reminderSearch}
           sessions={sessions}
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
@@ -1557,12 +1278,12 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return <ProfileScreen nav={nav} tab={navTab} onTab={handleNavTab} userName={userName} userEmail={userEmail} userAvatar={userAvatar} sessions={sessions} />;
+      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => { setNavTab("lead"); setScreen("home"); }} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
-      case "settings-preferences": return <StudyPreferencesScreen nav={nav} theme={theme} onTheme={setTheme} />;
-      case "settings-reminders": return <ExamRemindersScreen nav={nav} />;
+      case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
+      case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
       case "settings-notifications": return <PlaceholderScreen title="Notifications" subtitle="Control app alerts" nav={nav} backTo="preference" />;
-      case "about": return <AboutScreen nav={nav} />;
+      case "about": return <PlaceholderScreen title="Page unavailable" subtitle="Return to Preferences." nav={nav} backTo="preference" />;
       case "support": return <PlaceholderScreen title="Help & Support" subtitle="Get help anytime" nav={nav} backTo="preference" />;
       default: return <PlaceholderScreen title="Page unavailable" subtitle="This screen could not be restored safely." nav={nav} backTo="home" />;
     }

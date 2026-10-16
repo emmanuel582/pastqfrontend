@@ -59,7 +59,7 @@ export function AuthScreen({ mode, nav }: Props) {
   }
 
   const firstName = name.trim().split(/\s+/)[0];
-  return <AuthShell title={sent ? recovery ? 'Password updated.' : 'Check your inbox.' : recovery ? 'Your new password.' : reset ? 'Forgot password?' : signup ? 'Create account.' : 'Welcome back.'} greeting={signup && !sent ? firstName ? `Nice to meet you, ${firstName}.` : 'Hey, I’m Scholar.' : undefined} mascotState={busy ? 'waiting' : sent ? 'encourage' : 'idle'}>
+  return <AuthShell title={sent ? recovery ? 'Password updated.' : 'Check your inbox.' : recovery ? 'Your new password.' : reset ? 'Forgot password?' : signup ? 'Create account.' : 'Welcome back.'} greeting={signup && !sent ? firstName ? `Hey, ${Array.from(firstName).slice(0, 12).join('')}${Array.from(firstName).length > 12 ? '…' : ''}.` : 'Hey there.' : undefined} mascotState={busy ? 'waiting' : sent ? 'encourage' : 'idle'}>
         {sent ? <div className="auth-reset-success" role="status"><Check size={28} />{!recovery && <p>{signup ? 'Confirm your email to finish setting up your study room.' : 'If an account exists, a reset link will arrive shortly.'}</p>}<button type="button" className="auth-explore" onClick={() => nav('login')}>Back to sign in</button></div> : <>
           <form className="auth-form" onSubmit={submit} aria-busy={busy}>
             {signup && <label className="auth-field" htmlFor={`${id}-name`}><span>Full name</span><input id={`${id}-name`} name="name" autoComplete="name" maxLength={120} placeholder="Your full name" value={name} onChange={event => setName(event.target.value)} required disabled={busy} /></label>}
