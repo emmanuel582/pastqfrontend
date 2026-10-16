@@ -4,7 +4,7 @@ Account creation uses name, email and password (or Google). After authentication
 students choose **Undergraduate** or **Other learner**. Undergraduates choose a
 university. Other learners choose a school, an exam, or Explore. Preferences live
 in authenticated Supabase account metadata; they are personalization, never an
-authorization role. Accounts with a saved study choice skip completed onboarding. Legacy profile completion flags do not bypass the new study choice. The home screen can reopen personalization even after Explore.
+authorization role. Accounts with a saved study choice skip completed onboarding. Legacy profile completion flags do not bypass the new study choice. Choices are saved for future personalization. Home does not display the selected school/exam or ask students to change it, and Browse opens without filtering by that choice.
 
 Uploads finish extraction, receive a single review, then **Looks good — save**
 confirms the complete material before opening session setup. The confirmation is
@@ -81,4 +81,6 @@ not required by this student practice flow and are not claimed by these changes.
 
 ## App welcome
 
-The initial view is a full-height app welcome with one greeting and Create account / Sign in actions. Scholar uses the supplied waving image; a masked hand rotates once while the head, torso and feet stay anchored. Tapping the character replays the greeting. Reduced-motion mode keeps it still. The picture does not block either account action if it fails to load. Marketing kickers, slogan headings, decorative category numbering and repeated descriptions have been removed from the study screens.
+The initial view is a full-height app welcome with a speech bubble beside Scholar's face and Create account / Sign in actions. The bubble uses the brand accent and a tail toward his mouth. Scholar uses the supplied waving image; a masked hand waves continuously while the head, torso and feet stay anchored. Reduced-motion mode keeps it still. The picture does not block either account action if it fails to load. Marketing kickers, slogan headings, decorative category numbering and repeated descriptions have been removed from the study screens.
+
+The supplied atlas and bonus sheets were reviewed. Permanent screens use still poses: neutral for account entry, reassuring hand-to-chest for onboarding, reading for study/upload processing, thinking for exam customization, patient hands for waiting, and the relaxed smile for completed sessions. Running, jumping and alarm poses are reserved rather than placed beside forms or timed exam questions.

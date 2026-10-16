@@ -5,8 +5,14 @@ export type { ScholarState } from '../../utils/scholarMotion';
 const SPRITE_URL = '/pets/scholar/spritesheet.webp';
 
 function stillPose(state: ScholarState): ScholarFrame {
-  return { row: state === 'study' || state === 'celebrate' ? 8 : 0,
-    frame: state === 'celebrate' ? 5 : 0, hold: 0, blend: 380, action: 'still' };
+  // Curated from the supplied atlas: reading, reflection, patient waiting,
+  // reassurance, and a relaxed smile. Keep each pose still between states.
+  const poses: Record<ScholarState, [number, number]> = {
+    idle: [0, 0], study: [8, 1], thinking: [7, 0],
+    waiting: [6, 2], encourage: [5, 5], celebrate: [8, 5],
+  };
+  const [row, frame] = poses[state];
+  return { row, frame, hold: 0, blend: 380, action: 'still' };
 }
 
 export default function ScholarMascot({ state = 'study', compact = false, animated = false }: { state?: ScholarState; compact?: boolean; animated?: boolean }) {

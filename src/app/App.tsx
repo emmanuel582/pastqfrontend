@@ -3,7 +3,7 @@ import MathText from "./components/MathText";
 import { useAppNavigation } from "./useAppNavigation";
 import { AuthScreen } from "./components/auth/AuthScreen";
 import OnboardingScreen from "./components/auth/OnboardingScreen";
-import { readStudyPreferences, type StudyPreferences } from "../services/onboarding";
+import { readStudyPreferences } from "../services/onboarding";
 import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
 import ProcessingScreen from "./components/ProcessingScreen";
 import ScholarMascot from "./components/ScholarMascot";
@@ -207,7 +207,6 @@ function HomeScreen({
   tab,
   onTab,
   userName,
-  studyPreferences,
   sessions,
   offlineLibrary,
   globalLibrary,
@@ -223,7 +222,6 @@ function HomeScreen({
   tab: NavTab;
   onTab: (t: NavTab) => void;
   userName: string;
-  studyPreferences: StudyPreferences | null;
   sessions: any[];
   offlineLibrary: any[];
   globalLibrary: any[];
@@ -238,10 +236,9 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && <StudyHome name={userName} focus={studyPreferences?.focus} onChangeFocus={() => nav("onboarding")} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
+        {tab === "home" && <StudyHome name={userName} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
           <StudyLibrary
-            initialSearch={studyPreferences?.focus?.aliases?.[0] || studyPreferences?.focus?.name || ""}
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
             catalog={libraryCatalog}
@@ -1114,7 +1111,6 @@ export default function App() {
   const [userEmail, setUserEmail] = useState("");
   const [userAvatar, setUserAvatar] = useState("");
   const [userId, setUserId] = useState("");
-  const [studyPreferences, setStudyPreferences] = useState<StudyPreferences | null>(null);
   const [undergraduate, setUndergraduate] = useState<boolean | null>(null);
   const authenticatedUser = useRef<string | null>(null);
   const [sessions, setSessions] = useState<any[]>([]);
@@ -1296,7 +1292,6 @@ export default function App() {
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
         const preferences = readStudyPreferences(user.user_metadata);
-        setStudyPreferences(preferences);
         setUndergraduate(preferences?.undergraduate ?? null);
         setScreen((prev) => {
           if (prev === "splash" || prev === "login" || prev === "signup") {
@@ -1336,7 +1331,6 @@ export default function App() {
         setUserEmail("");
         setUserAvatar("");
         setUserId("");
-        setStudyPreferences(null);
         setUndergraduate(null);
         setScreen(prev => prev === "onboarding" ? "login" : prev);
       }
@@ -1441,14 +1435,13 @@ export default function App() {
       case "login": return <AuthScreen key="login" mode="login" nav={nav} />;
       case "forgot-password": return <AuthScreen key="reset" mode="reset" nav={nav} />;
       case "change-password": return <AuthScreen key="recovery" mode="recovery" nav={nav} />;
-      case "onboarding": return <OnboardingScreen key={userId || "pending"} name={userName} undergraduate={undergraduate} onComplete={preferences => { setStudyPreferences(preferences); setUndergraduate(preferences.undergraduate); nav("home"); }} />;
+      case "onboarding": return <OnboardingScreen key={userId || "pending"} name={userName} undergraduate={undergraduate} onComplete={preferences => { setUndergraduate(preferences.undergraduate); nav("home"); }} />;
       case "home": return (
         <HomeScreen
           nav={nav}
           tab={navTab}
           onTab={handleNavTab}
           userName={userName}
-          studyPreferences={studyPreferences}
           sessions={sessions}
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
