@@ -22,7 +22,7 @@ export const saveReminders = (settings: ReminderSettings, ownerId?: string) => r
 export function historyForReminders(sessions: any[]) {
   return sessions.flatMap(session => {
     const at = session.completed_at || session.created_at, timestamp = Date.parse(at);
-    const total = Number(session.total_questions ?? session.total), score = Number(session.score);
+    const total = Number(session.graded_total ?? session.total_questions ?? session.total), score = Number(session.score);
     if (!session.id || !Number.isFinite(timestamp) || timestamp < Date.now() - 365 * 86400000 || timestamp > Date.now() + 300000 || !Number.isInteger(total) || total < 0 || !Number.isInteger(score) || score < 0 || score > total) return [];
     return [{ id: String(session.id), at: new Date(timestamp).toISOString(), total, score, durationSeconds: Number(session.duration_seconds) || 0, subject: String(session.subject || (session.title === 'CBT Session' ? '' : session.title) || '').slice(0, 100) }];
   }).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 100);

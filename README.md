@@ -31,3 +31,5 @@ Tests use public test placeholders for Supabase configuration; they do not creat
 See [deployment instructions](DEPLOY.md) and [release checks](docs/production-readiness.md). The matching API is maintained in https://github.com/emmanuel582/pastqbackend.
 
 Preferences now contains real progress, device theme settings and opt-in study reminders. See [reminder setup and device checks](docs/study-reminders.md) before enabling production delivery.
+
+Discover is for public tutorials/exam sessions and private-code joins. Home uses downloaded papers and account-scoped offline outcomes; see [student spaces](docs/student-spaces.md) for behavior and the future teacher-app boundary.

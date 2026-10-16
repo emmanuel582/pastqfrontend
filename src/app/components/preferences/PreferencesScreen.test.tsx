@@ -11,6 +11,6 @@ describe('student preferences', () => {
   });
   it('does not invent a score or progress curve for a new student', () => {
     const html = renderToStaticMarkup(<PreferencesScreen {...props} sessions={[]} />);
-    expect(html).toContain('Complete a session'); expect(html).not.toContain('Latest score'); expect(html).not.toContain('85%');
+    expect(html).toContain('Start with one paper.'); expect(html).not.toContain('Latest score'); expect(html).not.toContain('student-stats'); expect(html).not.toContain('85%');
   });
 });

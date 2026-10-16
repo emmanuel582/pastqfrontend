@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bell, Check, ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
+import ScholarMascot from '../ScholarMascot';
 import { type StudyTheme } from '../../../utils/theme';
 import { getReminders, saveReminders, enableReminders, testReminder, currentDeviceId, notificationSupport, deviceTimezone, syncStudyHistory, type ReminderSettings, type ReminderSnapshot } from '../../../services/reminders';
 
-type History = { id?: string; score?: number; total_questions?: number; total?: number; completed_at?: string; created_at?: string; title?: string };
+type History = { id?: string; score?: number; total_questions?: number; graded_total?: number; total?: number; completed_at?: string; created_at?: string; title?: string };
 const label = (theme: StudyTheme) => theme === 'system' ? 'System' : theme === 'light' ? 'Light' : 'Dark';
 function progressData(sessions: History[]) {
   return sessions.flatMap(session => {
-    const total = Number(session.total_questions ?? session.total), score = Number(session.score), at = Date.parse(session.completed_at || session.created_at || '');
+    const total = Number(session.graded_total ?? session.total_questions ?? session.total), score = Number(session.score), at = Date.parse(session.completed_at || session.created_at || '');
     return total > 0 && Number.isFinite(score) && score >= 0 && score <= total && Number.isFinite(at) ? [{ score: Math.round(score / total * 100), at }] : [];
   }).sort((a, b) => a.at - b.at);
 }
-export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onProgress }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onProgress: () => void }) {
+export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onProgress, onStudy = onProgress }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onProgress: () => void; onStudy?: () => void }) {
   const data = progressData(sessions), recent = data.slice(-10), average = data.length ? Math.round(data.reduce((sum, item) => sum + item.score, 0) / data.length) : null;
   const [reminders, setReminders] = useState<ReminderSnapshot | null>(null);
   useEffect(() => { let active = true; getReminders(ownerId).then(value => { if (active) setReminders(value); }).catch(() => {}); return () => { active = false; }; }, [ownerId]);
@@ -21,14 +22,14 @@ export function PreferencesScreen({ ownerId, name, email, avatar, sessions, them
     <header className="study-topbar student-preferences-header"><span className="wordmark">past<span>q</span></span><h1>Preferences</h1></header>
     <div className="student-preferences-content">
       <div className="student-identity">{avatar ? <img src={avatar} alt="" /> : <span className="student-initials" aria-hidden="true">{initials}</span>}<div><strong>{name || 'Student'}</strong><span>{email}</span></div></div>
-      <section className="student-progress" aria-labelledby="student-progress-title"><div className="student-section-heading"><h2 id="student-progress-title">Your progress</h2><button className="text-button" onClick={onProgress}>View sessions<ArrowRight size={15} /></button></div>
+      {sessions.length > 0 ? <section className="student-progress" aria-labelledby="student-progress-title"><div className="student-section-heading"><h2 id="student-progress-title">Your progress</h2><button className="text-button" onClick={onProgress}>View sessions<ArrowRight size={15} /></button></div>
         <dl className="student-stats"><div><dt>Sessions</dt><dd>{sessions.length}</dd></div><div><dt>Average</dt><dd>{average === null ? '—' : `${average}%`}</dd></div><div><dt>Best</dt><dd>{data.length ? `${Math.max(...data.map(item => item.score))}%` : '—'}</dd></div></dl>
         {recent.length ? <div className="student-chart"><svg viewBox="0 0 560 180" role="img" aria-label={`Scores from your last ${recent.length} graded sessions. Latest score ${recent[recent.length - 1].score} percent.`}>
           {[0, 50, 100].map(value => <g key={value}><line x1="32" x2="540" y1={150 - value * 1.25} y2={150 - value * 1.25} /><text x="24" y={154 - value * 1.25} textAnchor="end">{value}</text></g>)}
           <polyline points={recent.map((item, index) => `${recent.length === 1 ? 286 : 42 + index * 488 / (recent.length - 1)},${150 - item.score * 1.25}`).join(' ')} />
-          {recent.map((item, index) => <circle key={`${item.at}-${index}`} cx={recent.length === 1 ? 286 : 42 + index * 488 / (recent.length - 1)} cy={150 - item.score * 1.25} r={index === recent.length - 1 ? 4 : 3}><title>{new Date(item.at).toLocaleDateString()} · {item.score}%</title></circle>)}
+          {recent.map((item, index) => <circle key={`${item.at}-${index}`} cx={recent.length === 1 ? 286 : 42 + index * 488 / (recent.length - 1)} cy={150 - item.score * 1.25} r={index === recent.length - 1 ? 4 : 3}><title>{`${new Date(item.at).toLocaleDateString()} · ${item.score}%`}</title></circle>)}
         </svg><div className="student-chart-dates"><span>{new Date(recent[0].at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span><span>{new Date(recent[recent.length - 1].at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span></div></div> : <div className="student-chart-empty">Complete a session to see your progress.</div>}
-      </section>
+      </section> : <section className="student-first-progress"><ScholarMascot state="study" /><h2>Start with one paper.</h2><p>Your progress will grow as you practise.</p><button className="study-primary" onClick={onStudy}>Find your next step<ArrowRight size={16} /></button></section>}
       <div className="student-settings-list"><button onClick={onTheme}><span className="student-setting-icon">{theme === 'dark' ? <Moon size={20} /> : theme === 'light' ? <Sun size={20} /> : <Monitor size={20} />}</span><span><strong>Theme</strong><small>{label(theme)}{theme === 'system' ? ' · Follows your device' : ''}</small></span><ChevronRight size={19} /></button><button onClick={onReminders}><span className="student-setting-icon"><Bell size={20} /></span><span><strong>Study reminders</strong><small>{reminderLabel}</small></span><ChevronRight size={19} /></button></div>
     </div>
   </main>;

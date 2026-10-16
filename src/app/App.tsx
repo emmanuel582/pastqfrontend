@@ -10,10 +10,13 @@ import ScholarMascot from "./components/ScholarMascot";
 import AppWelcome from "./components/AppWelcome";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
+import { readPracticeHistory, rememberPractice, cachePracticeHistory, syncPracticeHistory, mergePracticeHistory, type PracticeSummary } from "../services/practiceHistory";
+import StudyHome from "./components/home/StudyHome";
+import DiscoverScreen from "./components/discover/DiscoverScreen";
 import SnapScreen, { type UploadDraft } from "./components/upload/SnapScreen";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Camera, Upload, Home, Clock, User, Monitor,
+  Camera, Upload, Home, Clock, Compass, User, Monitor,
   Flag, Check, X, Eye, RotateCcw, Edit2,
   Bell, LogOut, AlertTriangle, BookOpen,
   ChevronRight, Plus, FileText, Shield, Star, Info, Twitter, Github, Library, Search, Download,
@@ -21,9 +24,9 @@ import {
 } from "lucide-react";
 import { listenToAuth } from "../services/auth";
 
-import { getUserHistory, saveExamSession, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
+import { getUserHistory, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
 import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
-import { StudyHome, StudyLibrary, StudyProgress } from "./components/library/StudyLibrary";
+import { StudyLibrary, StudyProgress } from "./components/library/StudyLibrary";
 import { StudyWorkspace, StudyResults } from "./components/cbt/StudyWorkspace";
 import { answerIndex } from "../utils/examSession";
 import { readTheme, followTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
@@ -40,7 +43,7 @@ type Screen =
   | "splash" | "signup" | "login" | "forgot-password" | "change-password" | "onboarding"
   | "home" | "snap" | "processing" | "review-questions" | "customize-cbt"
   | "exam" | "results" | "review-answers" | "preference" | "manual-entry"
-  | "profile-edit" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
+  | "profile-edit" | "practice-history" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
 type NavTab = "home" | "library" | "lead" | "preference";
 
 interface Q {
@@ -158,7 +161,7 @@ const INTER = { fontFamily: "'Outfit', sans-serif" };
 function BottomNav({ tab, onTab, onSnap }: { tab: NavTab; onTab: (t: NavTab) => void; onSnap: () => void }) {
   const items: { id: NavTab; label: string; Icon: React.ElementType }[] = [
     { id: "home", label: "Home", Icon: Home }, { id: "library", label: "Library", Icon: Library },
-    { id: "lead", label: "Progress", Icon: Clock }, { id: "preference", label: "Preferences", Icon: User },
+    { id: "lead", label: "Discover", Icon: Compass }, { id: "preference", label: "Preferences", Icon: User },
   ];
   return (
     <nav className="study-bottom-nav" aria-label="Main navigation">
@@ -209,6 +212,7 @@ function HomeScreen({
   tab,
   onTab,
   userName,
+  ownerId,
   reminderSearch,
   sessions,
   offlineLibrary,
@@ -219,12 +223,12 @@ function HomeScreen({
   onOpenBundle,
   onDownloadBundle,
   onSelectManufacturer,
-  onStartDemo,
 }: {
   nav: (s: Screen) => void;
   tab: NavTab;
   onTab: (t: NavTab) => void;
   userName: string;
+  ownerId: string;
   reminderSearch: string;
   sessions: any[];
   offlineLibrary: any[];
@@ -235,12 +239,11 @@ function HomeScreen({
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
-  onStartDemo: () => void;
 }) {
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && <StudyHome name={userName} onStart={onStartDemo} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
+        {tab === "home" && <StudyHome name={userName} materials={offlineLibrary} sessions={sessions} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
           <StudyLibrary
             key={reminderSearch}
@@ -256,7 +259,7 @@ function HomeScreen({
             onUpload={() => nav("snap")}
           />
         )}
-        {tab === "lead" && <StudyProgress sessions={sessions} onStart={onStartDemo} />}
+        {tab === "lead" && <DiscoverScreen key={ownerId} ownerId={ownerId} />}
         {tab === "preference" && <div className="p-5 text-[14px] text-[#8C8681]">Opening your study preferences…</div>}
       </div>
       <BottomNav tab={tab} onTab={onTab} onSnap={() => nav("snap")} />
@@ -800,7 +803,7 @@ export default function App() {
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
 
   useEffect(() => {
-    const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) void syncStudyHistory([], owner).catch(() => {}); };
+    const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) { void syncStudyHistory([], owner).catch(() => {}); void syncPracticeHistory(owner).catch(() => {}); } };
     window.addEventListener('online', flush); document.addEventListener('visibilitychange', flush);
     return () => { window.removeEventListener('online', flush); document.removeEventListener('visibilitychange', flush); };
   }, []);
@@ -1001,6 +1004,10 @@ export default function App() {
         setUserEmail(user.email || "");
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
+        void refreshOfflineLibrary().catch(() => {});
+        // Read device outcomes before any network-dependent profile/history work.
+        void readPracticeHistory(user.id).then(local => { if (active && authenticatedUser.current === user.id) setSessions(previous => mergePracticeHistory(previous, local)); }).catch(() => {});
+        void syncPracticeHistory(user.id).catch(() => {});
         void syncStudyHistory([], user.id).catch(() => {});
         const preferences = readStudyPreferences(user.user_metadata);
         setUndergraduate(preferences?.undergraduate ?? null);
@@ -1024,7 +1031,9 @@ export default function App() {
         try {
           const history = await getUserHistory(user.id);
           if (!active || request !== revision) return;
-          setSessions(history || []);
+          const merged = await cachePracticeHistory(user.id, history || []);
+          if (!active || request !== revision || authenticatedUser.current !== user.id) return;
+          setSessions(merged);
           void syncStudyHistory(history || [], user.id).catch(() => {});
         } catch {}
         // Load offline library from IndexedDB
@@ -1098,6 +1107,9 @@ export default function App() {
     if (userId) {
       const completedAt = new Date().toISOString(), resultId = crypto.randomUUID();
       const title = [...new Set(activeQuestions.map(question => question.subject).filter(Boolean))].slice(0, 3).join(', ') || 'CBT Session';
+      const localResult: PracticeSummary = { id: resultId, title, completed_at: completedAt, score: s, total_questions: activeQuestions.length, graded_total: activeQuestions.filter(question => answerIndex(question) !== null).length, answered_count: answers.filter(answer => answer !== null).length, duration_seconds: examDuration - timeLeft, source_bundle_id: practiceSource.bundleId, source_bundle_version: practiceSource.version, pending: true };
+      setSessions(previous => mergePracticeHistory(previous, [localResult]));
+      void rememberPractice(userId, localResult).then(() => syncPracticeHistory(userId)).catch(error => console.warn('Device progress could not sync:', error.message));
       void syncStudyHistory([{ id: resultId, completed_at: completedAt, total_questions: activeQuestions.filter(question => answerIndex(question) !== null).length, score: s, title, duration_seconds: examDuration - timeLeft }], userId).catch(() => {});
       try {
         const durationSeconds = examDuration - timeLeft;
@@ -1120,21 +1132,11 @@ export default function App() {
         // durably stored in Supabase above; this request holds no user id.
         void recordAnonymousAttemptSummary(attempts.map(({ questionKey, isCorrect }) => ({ questionKey, isCorrect })))
           .catch((error) => console.warn("Anonymous recommendation summary was not recorded", error));
-        await saveExamSession({
-          id: resultId,
-          user_id: userId,
-          title,
-          completed_at: completedAt,
-          score: s,
-          total_questions: activeQuestions.length,
-          answered_count: attempts.filter((attempt) => attempt.selectedOptionIndex != null).length,
-          duration_seconds: durationSeconds,
-          source_bundle_id: practiceSource.bundleId,
-          source_bundle_version: practiceSource.version,
-        });
         const history = await getUserHistory(userId);
         if (authenticatedUser.current !== userId) return;
-        setSessions(history || []);
+        const merged = await cachePracticeHistory(userId, history || []);
+        if (authenticatedUser.current !== userId) return;
+        setSessions(merged);
         void syncStudyHistory(history || [], userId).catch(() => {});
       } catch (e) { console.error("Failed to save session:", e); }
     }
@@ -1162,6 +1164,7 @@ export default function App() {
           tab={navTab}
           onTab={handleNavTab}
           userName={userName}
+          ownerId={userId}
           reminderSearch={reminderSearch}
           sessions={sessions}
           offlineLibrary={offlineLibrary}
@@ -1172,7 +1175,6 @@ export default function App() {
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
           onSelectManufacturer={handleSelectManufacturer}
-          onStartDemo={startDemo}
         />
       );
       case "snap": return <SnapScreen nav={nav} draft={uploadDraft} onDraftChange={setUploadDraft} onSessionStarted={(id) => setVisionSessionId(id)} />;
@@ -1278,7 +1280,8 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => { setNavTab("lead"); setScreen("home"); }} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "practice-history": return <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;

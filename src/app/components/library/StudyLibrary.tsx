@@ -1,20 +1,16 @@
 import { useState } from 'react';
-import ScholarMascot from '../ScholarMascot';
-import { ArrowRight, BookOpen, Download, Search, Upload } from 'lucide-react';
+import { gradedPercent } from '../../../utils/studyPlan';
+import { ArrowLeft, ArrowRight, BookOpen, Download, Search, Upload } from 'lucide-react';
 import { CatalogBrowser } from './CatalogBrowser';
 import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 
-export function StudyHome({ name, onStart, onLibrary, onUpload }: { name: string; onStart: () => void; onLibrary: () => void; onUpload: () => void }) {
-  return <div className="study-app study-home"><header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><span className="home-greeting">Hi, {name ? name.split(' ')[0] : 'Student'}</span></header><div className="home-content"><h1>Your study room</h1><div className="home-feature"><div><h2>Practice</h2><button className="study-primary" onClick={onStart}>Try a practice session<ArrowRight size={18} /></button></div><ScholarMascot state="study" /></div><div className="home-links"><button onClick={onLibrary}><BookOpen size={23} /><span><strong>Find your next subject</strong></span><ArrowRight size={20} /></button><button onClick={onUpload}><Upload size={23} /><span><strong>Bring your own material</strong></span><ArrowRight size={20} /></button></div></div></div>;
-}
-
-export function StudyProgress({ sessions, onStart }: { sessions: any[]; onStart: () => void }) {
-  return <main className="study-app library-screen"><header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><span className="home-greeting">Your progress</span></header><div className="library-content"><div className="results-heading"><h1>Your progress</h1></div><div className="progress-session-list">{sessions.length ? sessions.map(session => {
+export function StudyProgress({ sessions, onStart, onBack }: { sessions: any[]; onStart: () => void; onBack: () => void }) {
+  return <main className="study-app library-screen"><header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><button className="text-button" onClick={onBack}><ArrowLeft size={17} />Preferences</button></header><div className="library-content"><div className="results-heading"><h1>Past sessions</h1></div><div className="progress-session-list">{sessions.length ? sessions.map(session => {
     const total = session.total_questions ?? session.total ?? 0;
     const score = session.score ?? 0;
-    const date = session.created_at ? new Date(session.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : session.date;
-    return <div className="material-row" key={session.id}><BookOpen size={22} /><span><strong>{session.title || 'Practice session'}</strong><small>{date || 'Completed'}</small></span><strong>{score}/{total}</strong></div>;
-  }) : <div className="library-empty"><BookOpen size={30} strokeWidth={1.3} /><h3>No sessions yet.</h3><p>Completed sessions appear here.</p><button className="study-primary" onClick={onStart}>Start a session<ArrowRight size={17} /></button></div>}</div></div></main>;
+    const at = session.completed_at || session.created_at; const date = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : session.date;
+    return <div className="material-row" key={session.id}><BookOpen size={22} /><span><strong>{session.title || 'Practice session'}</strong><small>{date || 'Completed'}</small></span><strong>{gradedPercent(session) === null ? 'Completed' : `${gradedPercent(session)}%`}</strong></div>;
+  }) : <div className="library-empty"><BookOpen size={30} strokeWidth={1.3} /><h3>No sessions yet.</h3><button className="study-primary" onClick={onStart}>Find a paper<ArrowRight size={17} /></button></div>}</div></div></main>;
 }
 
 export function StudyLibrary({ globalLibrary, offlineLibrary, catalog, initialSearch = '', onOpen, onDownload, onSelect, onUpload, status, onRetry }: { globalLibrary: any[]; offlineLibrary: any[]; catalog: LibraryCatalog | null; initialSearch?: string; onOpen: (bundle: any) => void; onDownload: (bundle: any) => void | Promise<void>; onSelect: (m: CatalogManufacturer, e: CatalogExamType, o: CatalogUniversity) => void; onUpload: () => void; status: "loading" | "ready" | "error"; onRetry: () => void }) {
