@@ -19,6 +19,16 @@ beforeEach(() => vi.stubGlobal('window', { innerWidth: 390, innerHeight: 844 }))
 afterEach(() => vi.unstubAllGlobals());
 
 describe('answer visibility', () => {
+  it('numbers the active subject separately and offers a subject picker instead of a dropdown', () => {
+    const questions = ['Agricultural Science','Chemistry','Computer Studies'].flatMap((subject,index) => Array.from({length:index===0?40:20},()=>({...question,subject})));
+    const html = renderToStaticMarkup(<StudyWorkspace questions={questions} answers={Array(80).fill(null)} flagged={Array(80).fill(false)} currentQ={74} timeLeft={3600} duration={3600} showModal={false} onAnswer={()=>{}} onFlag={()=>{}} onQ={()=>{}} onModal={()=>{}} onSubmit={()=>{}} nav={()=>{}} />);
+    expect(html).toContain('QUESTION 15');
+    expect(html).toContain('/ 20');
+    expect(html).toContain('Computer Studies: 0 of 20 answered');
+    expect(html).toMatch(/<button[^>]+aria-label="Switch subject"/);
+    expect(html).not.toMatch(/<select[^>]+aria-label="Switch subject"/);
+    expect(html).not.toContain('QUESTION 75');
+  });
   it('accepts a written response without exposing its source answer before submission', () => {
     const props = { questions: [{ ...question, type: 'short_answer', options: ['SECRET-SOURCE-ANSWER'], optionsHtml: ['<div>SECRET-SOURCE-ANSWER</div>'], correct: null, answerText: 'SECRET-SOURCE-ANSWER' }],
       answers: [0], writtenAnswers: ['My written response'], flagged: [false], currentQ: 0, timeLeft: 1200, duration: 1200, showModal: false,
