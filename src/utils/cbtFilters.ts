@@ -17,6 +17,15 @@ export interface CbtBundle {
   manufacturer?: string;
 }
 
+/** Calendar years include their model papers; undated practice remains selectable. */
+export function questionYear(question: CbtQuestion): string {
+  const value = String(question.year || '').trim();
+  const year = value.match(/\b(?:19|20)\d{2}\b/);
+  if (year) return year[0];
+  if (question.sourceBank === 'lecture') return 'Topic practice';
+  return value && !['unknown', 'null'].includes(value.toLowerCase()) ? value : 'Undated';
+}
+
 /** Unique subjects present in a bundle, alphabetically sorted. */
 export function getAvailableSubjects(bundle: CbtBundle): string[] {
   const subjects = [
@@ -52,8 +61,7 @@ export function getQuestionCountByYear(
   }
   const counts: Record<string, number> = {};
   for (const q of pool) {
-    const y = String(q.year || '').trim();
-    if (!y || y === 'Unknown' || y === 'null') continue;
+    const y = questionYear(q);
     counts[y] = (counts[y] || 0) + 1;
   }
   return counts;
@@ -77,8 +85,7 @@ export function getAvailableYears(
   const years = [
     ...new Set(
       pool
-        .map((q) => String(q.year || '').trim())
-        .filter((y) => y && y !== 'Unknown' && y !== 'null')
+        .map(questionYear)
     ),
   ];
   years.sort((a, b) => (parseInt(b, 10) || 0) - (parseInt(a, 10) || 0));
@@ -104,7 +111,7 @@ export function filterCbtQuestions(
 
   if (selectedYears.length > 0) {
     const yearSet = new Set(selectedYears.map(year => String(year).trim()));
-    result = result.filter((q) => yearSet.has(String(q.year || '').trim()));
+    result = result.filter((q) => yearSet.has(questionYear(q)));
   }
 
   return result;
@@ -166,12 +173,12 @@ export function filterByTopics(questions: CbtQuestion[], selectedTopics: string[
 }
 
 /**
- * Questions the timed CBT runner can present and mark: those with at least two
- * options. Essay, short-answer, fill-in and structured questions are kept in
- * the material but are studied outside the CBT.
+ * Recognised written-answer records are included and reviewed against their
+ * source answer after submission. They are not automatically marked as MCQs.
  */
-export function isCbtQuestion(q: { options?: unknown }): boolean {
-  return Array.isArray(q.options) && q.options.length >= 2;
+export function isCbtQuestion(q: { options?: unknown; type?: unknown; answerText?: unknown }): boolean {
+  return (q.type === 'short_answer' && typeof q.answerText === 'string' && !!q.answerText.trim())
+    || (Array.isArray(q.options) && q.options.length >= 2);
 }
 
 /** Null means all; an empty selection means none, including when starting a session. */

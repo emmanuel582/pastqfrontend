@@ -19,6 +19,20 @@ beforeEach(() => vi.stubGlobal('window', { innerWidth: 390, innerHeight: 844 }))
 afterEach(() => vi.unstubAllGlobals());
 
 describe('answer visibility', () => {
+  it('accepts a written response without exposing its source answer before submission', () => {
+    const props = { questions: [{ ...question, type: 'short_answer', options: ['SECRET-SOURCE-ANSWER'], optionsHtml: ['<div>SECRET-SOURCE-ANSWER</div>'], correct: null, answerText: 'SECRET-SOURCE-ANSWER' }],
+      answers: [0], writtenAnswers: ['My written response'], flagged: [false], currentQ: 0, timeLeft: 1200, duration: 1200, showModal: false,
+      onAnswer: () => {}, onFlag: () => {}, onQ: () => {}, onModal: () => {}, onSubmit: () => {}, nav: () => {} };
+    const exam = renderToStaticMarkup(<StudyWorkspace {...props} />);
+    expect(exam).toContain('My written response');
+    expect(exam).toContain('textarea');
+    expect(exam).not.toContain('SECRET-SOURCE-ANSWER');
+    expect(exam).not.toContain('answer-options');
+    const review = renderToStaticMarkup(<StudyWorkspace {...props} review />);
+    expect(review).toContain('SECRET-SOURCE-ANSWER');
+    expect(review).toContain('Source answer');
+    expect(review).toMatch(/<textarea[^>]*readonly/i);
+  });
   it.each([false, true])('keeps selected answers editable and hides feedback before submission (practice=%s)', practice => {
     for (const selected of [0, 1]) {
       const html = render({ practice, selected });

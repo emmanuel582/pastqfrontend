@@ -32,6 +32,7 @@ import { answerIndex } from "../utils/examSession";
 import { readTheme, followTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
 import { CustomizeCbtScreen } from "./components/cbt/CustomizeCbtScreen";
 import { isCbtQuestion } from "../utils/cbtFilters";
+import { isLegacyUtmeBundle } from "../utils/utme";
 import { supabase } from "../services/supabase";
 import { rankRecommendationCandidates, recordAnonymousAttemptSummary } from "../services/recommendations";
 import {
@@ -75,6 +76,7 @@ interface Q {
   passage?: string | null;
   figures?: QuestionFigure[];
   answerText?: string | null;
+  questionHtml?: string; optionsHtml?: string[]; explanationHtml?: string;
 }
 
 /** Keep CBT / review order: page → printed number → extraction sequence. */
@@ -770,6 +772,7 @@ export default function App() {
   const { screen, setScreen, tab: navTab, setTab: setNavTab } = useAppNavigation<Screen, NavTab>("splash", "home");
   const [activeQuestions, setActiveQuestions] = useState<Q[]>(DEMO_QUESTIONS);
   const [answers, setAnswers] = useState<(number | null)[]>(Array(DEMO_QUESTIONS.length).fill(null));
+  const [writtenAnswers, setWrittenAnswers] = useState<string[]>([]);
   const [flagged, setFlagged] = useState<boolean[]>(Array(DEMO_QUESTIONS.length).fill(false));
   const [currentQ, setCurrentQ] = useState(0);
   const [reviewQ, setReviewQ] = useState(0);
@@ -933,6 +936,13 @@ export default function App() {
       const cached = await getOfflineBundle(bundle.id, ownerId || undefined);
       if (authenticatedUser.current !== ownerId) return;
       let fresh = cached && (!bundle.updatedAt || cached.updatedAt >= bundle.updatedAt) ? cached : bundle;
+      if (isLegacyUtmeBundle(fresh.id) && navigator.onLine) {
+        try {
+          const upgraded = await getBundleFromApi(fresh.id);
+          if (authenticatedUser.current !== ownerId) return;
+          if (upgraded.kind === 'utme-bank') { fresh = await saveBundle(upgraded); void refreshOfflineLibrary(); }
+        } catch { /* Existing subject downloads remain usable offline. */ }
+      }
       if (fresh.sourceSessionId && !fresh.questions?.length) {
         fresh = { ...await getSavedMaterial(fresh.sourceSessionId), ownerId };
         if (authenticatedUser.current !== ownerId) return;
@@ -946,7 +956,7 @@ export default function App() {
       }
       setCustomizeBundle({ ...fresh, questions: qs });
       setScreen("customize-cbt");
-      if (!fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
+      if (navigator.onLine && !fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
         // Background revalidation: offline copy may predate server additions.
         // Silently upgrade if the API bundle has more questions.
         getBundleFromApi(bundle.id)
@@ -992,7 +1002,7 @@ export default function App() {
       if (!active) return;
       if (previousUser && previousUser !== user?.id) {
         setReminderSearch(''); pendingReminder.current = null;
-        setActiveQuestions(DEMO_QUESTIONS); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
+        setActiveQuestions(DEMO_QUESTIONS); setWrittenAnswers([]); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
         setFlagged(Array(DEMO_QUESTIONS.length).fill(false)); setCurrentQ(0);
         setCustomizeBundle(null); setReviewMaterial(null); setVisionSessionId(null);
         setUploadDraft({ files: [], name: '' }); setOfflineLibrary([]); setSessions([]);
@@ -1062,7 +1072,7 @@ export default function App() {
   const nav = (s: Screen) => {
     if (s === "exam") {
       submitted.current = false;
-      setAnswers(Array(activeQuestions.length).fill(null));
+      setAnswers(Array(activeQuestions.length).fill(null)); setWrittenAnswers([]);
       setFlagged(Array(activeQuestions.length).fill(false));
       setCurrentQ(0);
       setShowModal(false);
@@ -1116,7 +1126,8 @@ export default function App() {
         const attempts = activeQuestions.map((question, index) => ({
           questionKey: practiceQuestionKey(practiceSource.bundleId, question, index),
           topicKey: question.subject || "general",
-          selectedOptionIndex: answers[index],
+          selectedOptionIndex: question.type === 'short_answer' ? null : answers[index],
+          answered: answers[index] !== null,
           isCorrect: answerIndex(question) === null || answers[index] == null ? null : answers[index] === answerIndex(question),
           attemptOrder: index,
         }));
@@ -1144,6 +1155,11 @@ export default function App() {
 
   const handleAnswer = (qi: number, opt: number) => {
     setAnswers(prev => { const n = [...prev]; n[qi] = opt; return n; });
+  };
+
+  const handleWrittenAnswer = (qi: number, text: string) => {
+    setWrittenAnswers(previous => { const next = [...previous]; next[qi] = text; return next; });
+    setAnswers(previous => { const next = [...previous]; next[qi] = text.trim() ? 0 : null; return next; });
   };
 
   const handleFlag = (qi: number) => {
@@ -1242,6 +1258,7 @@ export default function App() {
               }
             }
             setActiveQuestions(recommended);
+            setWrittenAnswers([]);
             setAnswers(Array(recommended.length).fill(null));
             setFlagged(Array(recommended.length).fill(false));
             setCurrentQ(0);
@@ -1261,6 +1278,7 @@ export default function App() {
         <StudyWorkspace
           questions={activeQuestions}
           answers={answers} onAnswer={handleAnswer}
+          writtenAnswers={writtenAnswers} onWrittenAnswer={handleWrittenAnswer} assets={customizeBundle?.assets}
           flagged={flagged} onFlag={handleFlag}
           currentQ={currentQ} onQ={setCurrentQ}
           timeLeft={timeLeft}
@@ -1276,10 +1294,10 @@ export default function App() {
       }} onPracticeMissed={() => {
         const missed = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] !== answerIndex(q));
         if (!missed.length) return;
-        setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed });
+        setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed, assets: customizeBundle?.assets });
         setScreen("customize-cbt");
       }} />;
-      case "review-answers": return <StudyWorkspace questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
+      case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
       case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
       case "practice-history": return <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;

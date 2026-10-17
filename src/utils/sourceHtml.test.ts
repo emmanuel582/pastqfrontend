@@ -6,6 +6,14 @@ const image = 'data:image/png;base64,iVBORw0KGgo=';
 function render(html: string) { const el = document.createElement('div'); el.append(sourceHtmlFragment(html)); return el; }
 
 describe('original question formatting', () => {
+  it('resolves shared image assets locally and rejects executable asset types', () => {
+    const key = 'a'.repeat(64), el = document.createElement('div');
+    el.append(sourceHtmlFragment(`<img src="pastq-asset:${key}">`, { [key]: { mime: 'image/png', data: 'iVBORw0KGgo=' } }));
+    expect(el.querySelector('img')?.getAttribute('src')).toBe(image);
+    const rejected = document.createElement('div');
+    rejected.append(sourceHtmlFragment(`<img src="pastq-asset:${key}">`, { [key]: { mime: 'image/svg+xml', data: 'abc=' } }));
+    expect(rejected.querySelector('img')).toBeNull();
+  });
   it('keeps tables, embedded illustrations, emphasis and native equations offline', () => {
     const el = render(`<div><strong>Use this diagram</strong><img src="${image}" alt="Circuit"><table><tr><td rowspan="2">12</td><td>7</td></tr></table><math><mfrac><mn>22</mn><mn>7</mn></mfrac></math></div>`);
     expect(el.querySelector('img')?.getAttribute('src')).toBe(image);

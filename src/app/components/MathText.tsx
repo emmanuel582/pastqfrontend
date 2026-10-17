@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from "react";
-import { sourceHtmlFragment } from "../../utils/sourceHtml";
+import { sourceHtmlFragment, type SourceAssets } from "../../utils/sourceHtml";
 
 interface MathTextProps {
   text: string;
   html?: string;
+  assets?: SourceAssets;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -100,7 +101,7 @@ function renderKatex(el: HTMLElement) {
   }
 }
 
-export const MathText: React.FC<MathTextProps> = ({ text, html, className, style }) => {
+export const MathText: React.FC<MathTextProps> = ({ text, html, assets, className, style }) => {
   const containerRef = useRef<HTMLSpanElement>(null);
   const display = normalizeSpokenMath(text || "");
 
@@ -109,7 +110,7 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, className, style
     if (!el) return;
 
     if (html) {
-      el.replaceChildren(sourceHtmlFragment(html));
+      el.replaceChildren(sourceHtmlFragment(html, assets));
       return;
     }
     fillWithEmphasis(el, display);
@@ -126,7 +127,7 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, className, style
     }, 50);
 
     return () => window.clearInterval(id);
-  }, [display, html]);
+  }, [display, html, assets]);
 
   return (
     <span ref={containerRef} className={[className, html && 'source-content'].filter(Boolean).join(' ')} style={style}>

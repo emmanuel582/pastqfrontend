@@ -1,5 +1,6 @@
 import localforage from "localforage";
 import { apiUrl } from "./api";
+import { UTME_BUNDLE_ID, isLegacyUtmeBundle } from "../utils/utme";
 
 localforage.config({
   name: "PastQLibrary",
@@ -80,6 +81,7 @@ function normalizeBundle(raw: any) {
     ...parsedDesc,
     id: raw.id || raw.bundle_id || crypto.randomUUID(),
     title: raw.title || raw.name || "Untitled Material",
+    updatedAt: raw.updatedAt || raw.updated_at || null,
     icon: raw.icon || "📚",
     questions,
     groups: raw.groups || parsedDesc?.groups || [],
@@ -141,10 +143,17 @@ export const getOfflineLibrary = async (ownerId?: string) => {
     if (b && !b.sourceSessionId && !b.approvedAt && !b.manufacturer && !b.organization && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(b.id)) return;
     if (b && (!b.sourceSessionId || b.ownerId === ownerId)) bundles.push(b);
   });
-  return bundles.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+  const hasCompleteUtme = bundles.some(bundle => bundle.id === UTME_BUNDLE_ID && bundle.kind === 'utme-bank'
+    && bundle.questions.length === bundle.sourceAudit?.questions);
+  return bundles.filter(bundle => !hasCompleteUtme || !isLegacyUtmeBundle(bundle.id))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
 };
 
 export const getOfflineBundle = async (bundleId: string, ownerId?: string) => {
+  if (isLegacyUtmeBundle(bundleId)) {
+    const combined = normalizeBundle(await localforage.getItem(UTME_BUNDLE_ID));
+    if (combined?.kind === 'utme-bank' && combined.questions.length === combined.sourceAudit?.questions) return combined;
+  }
   const raw = (ownerId && await localforage.getItem(`private:${ownerId}:${bundleId}`)) || await localforage.getItem(bundleId);
   if ((raw as any)?.sourceSessionId && (raw as any)?.ownerId !== ownerId) return null;
   return normalizeBundle(raw);

@@ -6,6 +6,8 @@ import {
   getDefaultSelectedSubjects,
   getQuestionCountBySubject,
   yearRangeLabel,
+  selectSessionQuestions,
+  getQuestionCountByYear,
 } from "./cbtFilters";
 
 describe("cbtFilters", () => {
@@ -75,5 +77,20 @@ describe("cbtFilters", () => {
       Biology: 2,
       "Use of English": 1,
     });
+  });
+
+  it('keeps model papers in their calendar year and includes original written questions', () => {
+    const pool = [
+      { id: 1, subject: 'Physics', year: '2025', question: 'Past paper', options: ['a', 'b'] },
+      { id: 2, subject: 'Physics', year: '2025 Model I', question: 'Model paper', options: ['a', 'b'] },
+      { id: 3, subject: 'Use of English', year: '2024 Model II', question: 'English', options: ['a', 'b'] },
+      { id: 4, subject: 'Physics', year: null, sourceBank: 'lecture', type: 'short_answer', question: 'Name the unit', options: ['Newton'], answerText: 'Newton' },
+    ];
+    expect(getAvailableYears(pool)).toEqual(['2025', '2024', 'Topic practice']);
+    expect(getQuestionCountByYear(pool, ['Physics'])).toEqual({ '2025': 2, 'Topic practice': 1 });
+    expect(selectSessionQuestions(pool, { subjects: ['Physics', 'Use of English'], years: null, topics: null })).toHaveLength(4);
+    expect(selectSessionQuestions(pool, { subjects: ['Physics'], years: ['2025'], topics: null }).map(q => q.id)).toEqual([1, 2]);
+    expect(selectSessionQuestions(pool, { subjects: ['Physics'], years: ['Topic practice'], topics: null }).map(q => q.id)).toEqual([4]);
+    expect(selectSessionQuestions(pool, { subjects: ['Physics'], years: [], topics: null })).toHaveLength(0);
   });
 });

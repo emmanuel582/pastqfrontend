@@ -32,6 +32,7 @@ export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onF
   </div>;
 }
 function MaterialRow({ material, onClick }: { material: CatalogManufacturer; onClick: () => void }) {
+  const [opening, setOpening] = useState(false);
   const year = material.yearMin && material.yearMax ? material.yearMin === material.yearMax ? material.yearMin : `${material.yearMin}–${material.yearMax}` : null;
-  return <button className="material-row" onClick={onClick}><BookOpen size={19} /><span><strong>{material.title || material.name}</strong><small>{[`${material.questionCount || 0} questions`, year].filter(Boolean).join(' · ')}</small></span><ChevronRight size={18} /></button>;
+  return <button className="material-row" aria-busy={opening} disabled={opening} onClick={async () => { if (opening) return; setOpening(true); try { await onClick(); } finally { setOpening(false); } }}><BookOpen size={19} /><span><strong>{material.title || material.name}</strong><small>{opening ? 'Preparing your download…' : [`${material.questionCount || 0} questions`, year].filter(Boolean).join(' · ')}</small></span><ChevronRight size={18} /></button>;
 }

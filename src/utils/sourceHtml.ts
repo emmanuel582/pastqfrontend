@@ -7,8 +7,9 @@ const tags = new Set('div span p br strong b em i u s sub sup hr table thead tbo
 const blocked = new Set('script style iframe object embed template svg link meta base form input button audio video'.split(' '));
 const styles = new Set('display position width max-width border-collapse border border-top border-left border-right border-bottom border-bottom-width text-align text-decoration left top margin padding font-weight font-style height vertical-align margin-right margin-left padding-left min-width'.split(' '));
 const mathTags = new Set('math semantics mrow mfrac mn msup mi mo msub msqrt mroot mover munder munderover mtable mtr mtd mtext msubsup mspace menclose mfenced annotation'.split(' '));
+export type SourceAssets = Record<string, { mime: string; data: string }>;
 
-export function sourceHtmlFragment(html: string): DocumentFragment {
+export function sourceHtmlFragment(html: string, assets?: SourceAssets): DocumentFragment {
   const source = document.createElement('template');
   source.innerHTML = html;
   const fragment = document.createDocumentFragment();
@@ -23,7 +24,13 @@ export function sourceHtmlFragment(html: string): DocumentFragment {
       ? document.createElementNS('http://www.w3.org/1998/Math/MathML', tag)
       : document.createElement(tag);
     if (tag === 'img') {
-      const src = element.getAttribute('src') || '';
+      let src = element.getAttribute('src') || '';
+      const reference = /^pastq-asset:([a-f0-9]{64})$/.exec(src);
+      if (reference) {
+        const asset = assets?.[reference[1]];
+        if (!asset) return;
+        src = `data:${asset.mime};base64,${asset.data}`;
+      }
       if (!/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/.test(src)) return;
       copy.setAttribute('src', src);
       copy.setAttribute('alt', element.getAttribute('alt') || 'Original question illustration');

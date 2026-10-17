@@ -40,6 +40,7 @@ export type AttemptForStorage = {
   selectedOptionIndex: number | null;
   isCorrect: boolean | null;
   attemptOrder: number;
+  answered?: boolean;
 };
 
 /**
@@ -56,7 +57,7 @@ export const savePracticeResult = async (input: {
   attempts: AttemptForStorage[];
 }) => {
   const completedAt = new Date().toISOString();
-  const answeredCount = input.attempts.filter((attempt) => attempt.selectedOptionIndex != null).length;
+  const answeredCount = input.attempts.filter((attempt) => attempt.answered ?? attempt.selectedOptionIndex != null).length;
   const { data: practice, error: practiceError } = await supabase
     .from("practice_sessions")
     .insert({
