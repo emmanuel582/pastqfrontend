@@ -1,6 +1,7 @@
 import localforage from "localforage";
 import { apiUrl } from "./api";
 import { UTME_BUNDLE_ID, isLegacyUtmeBundle } from "../utils/utme";
+import { bundleNeedsImageRepair } from '../utils/bundleMedia';
 
 localforage.config({
   name: "PastQLibrary",
@@ -134,6 +135,18 @@ export const saveBundle = async (bundle: any) => {
   return normalized;
 };
 
+/** Restore incomplete public downloads before an exam, including equal-count updates. */
+export const ensureBundleImages = async (bundle: any, onRepair?: () => void) => {
+  if (bundle?.sourceSessionId || !bundleNeedsImageRepair(bundle)) return bundle;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect once to restore the images in this saved material.');
+  onRepair?.();
+  try {
+    const complete = await getBundleFromApi(bundle.id);
+    if (bundleNeedsImageRepair(complete)) throw new Error('Incomplete image download');
+    return await saveBundle(complete);
+  } catch { throw new Error('Could not restore the question images. Check your connection and try again.'); }
+};
+
 export const getOfflineLibrary = async (ownerId?: string) => {
   const bundles: any[] = [];
   await localforage.iterate((value) => {
@@ -144,7 +157,7 @@ export const getOfflineLibrary = async (ownerId?: string) => {
     if (b && (!b.sourceSessionId || b.ownerId === ownerId)) bundles.push(b);
   });
   const hasCompleteUtme = bundles.some(bundle => bundle.id === UTME_BUNDLE_ID && bundle.kind === 'utme-bank'
-    && bundle.questions.length === bundle.sourceAudit?.questions);
+    && bundle.questions.length === bundle.sourceAudit?.questions && !bundleNeedsImageRepair(bundle));
   return bundles.filter(bundle => !hasCompleteUtme || !isLegacyUtmeBundle(bundle.id))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
 };
@@ -152,7 +165,7 @@ export const getOfflineLibrary = async (ownerId?: string) => {
 export const getOfflineBundle = async (bundleId: string, ownerId?: string) => {
   if (isLegacyUtmeBundle(bundleId)) {
     const combined = normalizeBundle(await localforage.getItem(UTME_BUNDLE_ID));
-    if (combined?.kind === 'utme-bank' && combined.questions.length === combined.sourceAudit?.questions) return combined;
+    if (combined?.kind === 'utme-bank' && combined.questions.length === combined.sourceAudit?.questions && !bundleNeedsImageRepair(combined)) return combined;
   }
   const raw = (ownerId && await localforage.getItem(`private:${ownerId}:${bundleId}`)) || await localforage.getItem(bundleId);
   if ((raw as any)?.sourceSessionId && (raw as any)?.ownerId !== ownerId) return null;

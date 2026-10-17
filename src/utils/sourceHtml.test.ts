@@ -14,6 +14,7 @@ describe('original question formatting', () => {
     const key = 'a'.repeat(64), el = document.createElement('div');
     el.append(sourceHtmlFragment(`<img src="pastq-asset:${key}">`, { [key]: { mime: 'image/png', data: 'iVBORw0KGgo=' } }));
     expect(el.querySelector('img')?.getAttribute('src')).toBe(image);
+    expect(el.querySelector('img')?.getAttribute('loading')).toBe('eager');
     const rejected = document.createElement('div');
     rejected.append(sourceHtmlFragment(`<img src="pastq-asset:${key}">`, { [key]: { mime: 'image/svg+xml', data: 'abc=' } }));
     expect(rejected.querySelector('img')).toBeNull();

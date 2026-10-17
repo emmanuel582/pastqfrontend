@@ -41,7 +41,10 @@ export function sourceHtmlFragment(html: string, assets?: SourceAssets): Documen
       if (!/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/.test(src)) return;
       copy.setAttribute('src', src);
       copy.setAttribute('alt', element.getAttribute('alt') || 'Original question illustration');
-      copy.setAttribute('loading', 'lazy');
+      // Only the active question is mounted. Its diagrams must load immediately,
+      // including inside nested scroll areas on mobile browsers.
+      copy.setAttribute('loading', 'eager');
+      copy.setAttribute('decoding', 'async');
     }
     for (const key of ['colspan', 'rowspan']) {
       const value = element.getAttribute(key);

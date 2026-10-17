@@ -1,5 +1,6 @@
 import MathText from "./MathText";
 import { apiUrl } from "../../services/api";
+import { useState } from 'react';
 
 export interface QuestionFigure {
   url?: string | null;
@@ -13,6 +14,22 @@ export interface QuestionFigure {
  * original page pixels cropped by the extraction engine; the model's
  * description is the alt text.
  */
+export function questionFigureSource(url: string): string | null {
+  if (/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/.test(url)) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/') && !url.startsWith('//')) return apiUrl(url);
+  return null;
+}
+
+function Figure({ figure }: { figure: QuestionFigure }) {
+  const [failed, setFailed] = useState(false);
+  const source = questionFigureSource(figure.url || '');
+  return <figure className="question-figure">
+    {source && !failed ? <img src={source} alt={figure.description || figure.caption || 'Question figure'} loading="eager" decoding="async" className="max-w-full h-auto mx-auto" onError={() => setFailed(true)} /> : <p className="source-image-missing" role="status">Image unavailable. Reopen this material when connected.</p>}
+    {figure.caption && <figcaption className="text-[11px] text-[#8C8681] text-center mt-1">{figure.caption}</figcaption>}
+  </figure>;
+}
+
 export default function QuestionMedia({ passage, figures }: { passage?: string | null; figures?: QuestionFigure[] }) {
   const shown = (figures || []).filter((f) => f?.url);
   if (!passage && !shown.length) return null;
@@ -23,17 +40,7 @@ export default function QuestionMedia({ passage, figures }: { passage?: string |
           <MathText text={passage} />
         </div>
       )}
-      {shown.map((f, i) => (
-        <figure key={`${f.url}-${i}`} className="bg-white border border-[#EADFD3] rounded-xl p-2">
-          <img
-            src={apiUrl(f.url!)}
-            alt={f.description || f.caption || "Question figure"}
-            loading="lazy"
-            className="max-w-full h-auto mx-auto"
-          />
-          {f.caption && <figcaption className="text-[11px] text-[#8C8681] text-center mt-1">{f.caption}</figcaption>}
-        </figure>
-      ))}
+      {shown.map((f, i) => <Figure key={`${f.url}-${i}`} figure={f} />)}
     </div>
   );
 }

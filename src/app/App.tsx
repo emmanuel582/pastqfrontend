@@ -7,6 +7,7 @@ import { readStudyPreferences } from "../services/onboarding";
 import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
 import ProcessingScreen from "./components/ProcessingScreen";
 import ScholarMascot from "./components/ScholarMascot";
+import StudyLoading from "./components/StudyLoading";
 import AppWelcome from "./components/AppWelcome";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
@@ -25,7 +26,7 @@ import {
 import { listenToAuth } from "../services/auth";
 
 import { getUserHistory, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
-import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
+import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, ensureBundleImages, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
 import { StudyLibrary, StudyProgress } from "./components/library/StudyLibrary";
 import PreparationLibrary from './components/library/PreparationLibrary';
 import { environmentFor, readPreparation, savePreparation, type Preparation } from '../services/preparation';
@@ -820,6 +821,7 @@ export default function App() {
   const [libraryCatalog, setLibraryCatalog] = useState<LibraryCatalog | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
+  const [restoringImages, setRestoringImages] = useState(false);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
 
   useEffect(() => {
@@ -874,7 +876,8 @@ export default function App() {
     uni: CatalogUniversity
   ) => {
     try {
-      let bundle = await getOfflineBundle(mfg.bundleId);
+      const ownerId = authenticatedUser.current;
+      let bundle = await getOfflineBundle(mfg.bundleId, ownerId || undefined);
       if (!bundle?.questions?.length) {
         bundle = await getBundleFromApi(mfg.bundleId);
         await saveBundle(bundle);
@@ -884,6 +887,10 @@ export default function App() {
         alert("This material has no questions yet.");
         return;
       }
+      const original = bundle;
+      bundle = await ensureBundleImages(bundle, () => setRestoringImages(true));
+      if (authenticatedUser.current !== ownerId) return;
+      if (bundle !== original) void refreshOfflineLibrary();
       setCustomizeBundle({
         ...bundle,
         examType: bundle.exam?.name || bundle.examType || exam.name,
@@ -894,8 +901,8 @@ export default function App() {
       setScreen("customize-cbt");
     } catch (e) {
       console.error(e);
-      alert("Could not load this material. Check your connection.");
-    }
+      alert(e instanceof Error ? e.message : "Could not load this material. Check your connection.");
+    } finally { setRestoringImages(false); }
   };
 
   const loadQuestions = (qs: Q[], nextScreen: Screen = "exam") => {
@@ -967,6 +974,10 @@ export default function App() {
         try { await saveBundle({ ...fresh, ownerId }); } catch { /* Server copy is saved even when device storage is full. */ }
         if (authenticatedUser.current !== ownerId) return;
       }
+      const original = fresh;
+      fresh = await ensureBundleImages(fresh, () => setRestoringImages(true));
+      if (authenticatedUser.current !== ownerId) return;
+      if (fresh !== original) void refreshOfflineLibrary();
       const qs = Array.isArray(fresh?.questions) ? fresh.questions : [];
       if (!qs.length) {
         alert("This download has no saved questions yet. Re-extract or re-download it.");
@@ -975,13 +986,13 @@ export default function App() {
       setCustomizeBundle({ ...fresh, questions: qs });
       if (preparation.enabled) changePreparation({ ...preparation, activeEnvironment: environmentFor(fresh).id });
       setScreen("customize-cbt");
-      if (navigator.onLine && !fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
+      if (fresh === original && navigator.onLine && !fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
         // Background revalidation: offline copy may predate server additions.
-        // Silently upgrade if the API bundle has more questions.
+        // Refresh newer content even when its question count is unchanged.
         getBundleFromApi(bundle.id)
           .then(async (live: any) => {
             const liveQs = Array.isArray(live?.questions) ? live.questions : [];
-            if (liveQs.length > qs.length) {
+            if (liveQs.length > qs.length || Date.parse(live.updatedAt || '') > Date.parse(fresh.updatedAt || '')) {
               const saved = await saveBundle(live);
               await refreshOfflineLibrary();
             }
@@ -990,8 +1001,8 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
-      alert("Could not open this material.");
-    }
+      alert(e instanceof Error ? e.message : "Could not open this material.");
+    } finally { setRestoringImages(false); }
   };
 
   const handleDownloadBundle = async (bundle: any) => {
@@ -1337,7 +1348,7 @@ export default function App() {
   return (
     <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
       <div className="h-full w-full overflow-hidden">
-        {renderScreen()}
+        {restoringImages ? <StudyLoading message="Restoring your saved question images…" /> : renderScreen()}
       </div>
     </div>
   );

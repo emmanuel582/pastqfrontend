@@ -1,5 +1,6 @@
 .source-content { display: block; max-width: 100%; overflow-x: auto; overflow-wrap: break-word; font-weight: inherit; }
 .source-content img { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; border-radius: 3px; }
+.question-figure { background:#fff; color:#2e2a27; border:1px solid var(--study-line); border-radius:10px; padding:10px; }
 .source-content table { max-width: 100%; border-collapse: collapse; font-size: inherit; font-weight: inherit; }
 .source-content td, .source-content th { padding: .25em .4em; }
 .source-content hr { border: 0; border-top: 1px solid currentColor; margin: .15em 0; }
