@@ -19,15 +19,17 @@ beforeEach(() => vi.stubGlobal('window', { innerWidth: 390, innerHeight: 844 }))
 afterEach(() => vi.unstubAllGlobals());
 
 describe('answer visibility', () => {
-  it('numbers the active subject separately and offers a subject picker instead of a dropdown', () => {
+  it('keeps every subject visible for switching and removes the repeated question heading', () => {
     const questions = ['Agricultural Science','Chemistry','Computer Studies'].flatMap((subject,index) => Array.from({length:index===0?40:20},()=>({...question,subject})));
     const html = renderToStaticMarkup(<StudyWorkspace questions={questions} answers={Array(80).fill(null)} flagged={Array(80).fill(false)} currentQ={74} timeLeft={3600} duration={3600} showModal={false} onAnswer={()=>{}} onFlag={()=>{}} onQ={()=>{}} onModal={()=>{}} onSubmit={()=>{}} nav={()=>{}} />);
-    expect(html).toContain('QUESTION 15');
-    expect(html).toContain('/ 20');
+    expect(html).toContain('15/20');
     expect(html).toContain('Computer Studies: 0 of 20 answered');
-    expect(html).toMatch(/<button[^>]+aria-label="Switch subject"/);
-    expect(html).not.toMatch(/<select[^>]+aria-label="Switch subject"/);
-    expect(html).not.toContain('QUESTION 75');
+    expect(html).toContain('aria-label="Exam subjects"');
+    for (const subject of ['Agricultural Science', 'Chemistry', 'Computer Studies']) {
+      expect(html).toContain(`aria-label="Switch to ${subject}" aria-pressed="${subject === 'Computer Studies'}"`);
+    }
+    expect(html).not.toContain('aria-haspopup="dialog"');
+    expect(html).not.toContain('QUESTION ');
   });
   it('accepts a written response without exposing its source answer before submission', () => {
     const props = { questions: [{ ...question, type: 'short_answer', options: ['SECRET-SOURCE-ANSWER'], optionsHtml: ['<div>SECRET-SOURCE-ANSWER</div>'], correct: null, answerText: 'SECRET-SOURCE-ANSWER' }],
