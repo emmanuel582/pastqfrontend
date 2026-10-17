@@ -1,0 +1,9 @@
+.source-content { display: block; max-width: 100%; overflow-x: auto; overflow-wrap: break-word; font-weight: inherit; }
+.source-content img { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; border-radius: 3px; }
+.source-content table { max-width: 100%; border-collapse: collapse; font-size: inherit; font-weight: inherit; }
+.source-content td, .source-content th { padding: .25em .4em; }
+.source-content hr { border: 0; border-top: 1px solid currentColor; margin: .15em 0; }
+.source-content math { font-size: 1em; }
+.source-content annotation { display: none; }
+.source-content p { margin: 0 0 .6em; }
+.source-content strong, .source-content b { font-weight: 700; }
