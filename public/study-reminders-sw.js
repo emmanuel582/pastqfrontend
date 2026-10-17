@@ -5,9 +5,12 @@ self.addEventListener('push', event => {
   let data = {}; try { data = event.data?.json() || {}; } catch { /* A visible generic notification is still required. */ }
   let url = new URL('/?reminder=study', self.location.origin);
   try { const candidate = new URL(data.url || url, self.location.origin); if (candidate.origin === self.location.origin) url = candidate; } catch {}
+  // Only first-party, known artwork can enter an OS notification. Never fetch
+  // arbitrary payload image URLs or expose study history through third parties.
+  const mood = ['welcome', 'focus', 'celebrate'].includes(data.mood) ? data.mood : 'welcome';
   event.waitUntil(self.registration.showNotification(typeof data.title === 'string' ? data.title.slice(0, 100) : 'A study moment with Scholar', {
     body: typeof data.body === 'string' ? data.body.slice(0, 300) : 'Come back for a short practice session.',
-    icon: '/pastq-icon-192.png', badge: '/pastq-icon-192.png', tag: typeof data.tag === 'string' ? data.tag.slice(0, 100) : 'pastq-study',
+    icon: `/pets/scholar/reminders/${mood}-icon-v1.png`, image: `/pets/scholar/reminders/${mood}-v1.jpg`, badge: '/pastq-icon-192.png', tag: typeof data.tag === 'string' ? data.tag.slice(0, 100) : 'pastq-study',
     data: { url: url.pathname + url.search }, renotify: false,
   }));
 });

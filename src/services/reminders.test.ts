@@ -2,7 +2,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 const { getSession } = vi.hoisted(() => ({ getSession: vi.fn() }));
 vi.mock('./supabase', () => ({ supabase: { auth: { getSession } } }));
-import { enableReminders, getReminders, historyForReminders, syncStudyHistory, syncReminderDeviceOwner, type ReminderSnapshot } from './reminders';
+import { enableReminders, testReminder, getReminders, historyForReminders, syncStudyHistory, syncReminderDeviceOwner, reminderPortrait, type ReminderSnapshot } from './reminders';
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); getSession.mockResolvedValue({ data: { session: { access_token: 'token', user: { id: 'student-a' } } } }); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('account study reminders', () => {
@@ -34,5 +34,17 @@ describe('account study reminders', () => {
     Object.defineProperty(navigator, 'serviceWorker', { value: { getRegistration }, configurable: true });
     await syncReminderDeviceOwner('student-a'); expect(unsubscribe).not.toHaveBeenCalled();
     await syncReminderDeviceOwner('student-b'); expect(unsubscribe).toHaveBeenCalledOnce(); expect(localStorage.getItem('pastq-reminder-device-owner')).toBe('student-b');
+  });
+  it('waits for an existing worker update before sending the test notification', async () => {
+    const events: string[] = [], update = vi.fn(async () => { events.push('updated'); });
+    const registration = { active: {}, update, pushManager: { getSubscription: async () => ({ endpoint: 'https://fcm.googleapis.com/current' }) } };
+    const register = vi.fn(async () => registration), fetch = vi.fn(async () => { events.push('sent'); return { ok: true, json: async () => ({ ownerId: 'student-a' }) }; });
+    Object.defineProperty(navigator, 'serviceWorker', { value: { register }, configurable: true }); vi.stubGlobal('fetch', fetch);
+    await testReminder('student-a'); expect(events).toEqual(['updated', 'sent']);
+    expect(register).toHaveBeenCalledWith('/study-reminders-sw.js', { scope: '/', updateViaCache: 'none' });
+    expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({ endpoint: 'https://fcm.googleapis.com/current' });
+  });
+  it('uses only known first-party expression portraits in the in-app preview', () => {
+    expect(reminderPortrait('focus')).toBe('/pets/scholar/reminders/focus-v1.jpg'); expect(reminderPortrait('https://tracking.example')).toBe('/pets/scholar/reminders/welcome-v1.jpg');
   });
 });

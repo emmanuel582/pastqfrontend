@@ -19,13 +19,15 @@ describe('app welcome', () => {
     expect(onSignup).toHaveBeenCalledOnce(); expect(onLogin).toHaveBeenCalledOnce();
   });
   it('replays only the hand without replacing or shifting the body image', async () => {
-    const body = container.querySelector('image[mask]'); const hand = container.querySelector('.welcome-wave-hand');
+    const body = container.querySelector('.greeting-body'); const hand = container.querySelector('.welcome-wave-hand');
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Wave with Scholar"]')!.click());
-    expect(container.querySelector('image[mask]')).toBe(body);
+    expect(container.querySelector('.greeting-body')).toBe(body);
     expect(container.querySelector('.welcome-wave-hand')).not.toBe(hand);
+    expect(container.querySelectorAll('clipPath')).toHaveLength(0);
+    expect(container.querySelector('.greeting-body')!.hasAttribute('mask')).toBe(false);
   });
   it('keeps account actions available if the illustration cannot load', async () => {
-    await act(async () => container.querySelector('image[mask]')!.dispatchEvent(new Event('error')));
+    await act(async () => container.querySelector('.greeting-body')!.dispatchEvent(new Event('error')));
     expect(container.querySelector('.welcome-scholar-fallback')).not.toBeNull();
     await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Create account')!.click());
     expect(onSignup).toHaveBeenCalledOnce();

@@ -6,10 +6,18 @@ function worker() { const listeners: Record<string, (event: any) => void> = {}, 
 describe('study notification worker', () => {
   it('shows a visible branded notification and rejects external navigation targets', async () => {
     const w = worker(); let pending: Promise<unknown> = Promise.resolve(); w.listeners.push({ data: { json: () => ({ title: 'Scholar', body: 'A little Physics?', url: 'https://external.example/track' }) }, waitUntil: (value: Promise<unknown>) => { pending = value; } }); await pending;
-    expect(w.showNotification).toHaveBeenCalledWith('Scholar', expect.objectContaining({ icon: '/pastq-icon-192.png', body: 'A little Physics?', data: { url: '/?reminder=study' } }));
+    expect(w.showNotification).toHaveBeenCalledWith('Scholar', expect.objectContaining({ icon: '/pets/scholar/reminders/welcome-icon-v1.png', image: '/pets/scholar/reminders/welcome-v1.jpg', body: 'A little Physics?', data: { url: '/?reminder=study' } }));
   });
   it('opens an existing app through a message instead of reloading a live exam', async () => {
     const w = worker(); let pending: Promise<unknown> = Promise.resolve(); w.listeners.notificationclick({ notification: { close: vi.fn(), data: { url: '/?reminder=study&subject=Physics' } }, waitUntil: (value: Promise<unknown>) => { pending = value; } }); await pending;
     expect(w.postMessage).toHaveBeenCalledWith({ type: 'PASTQ_OPEN_STUDY', url: '/?reminder=study&subject=Physics' }); expect(w.focus).toHaveBeenCalledOnce(); expect(w.openWindow).not.toHaveBeenCalled();
+  });
+  it('uses the selected expression while ignoring untrusted remote artwork URLs', async () => {
+    for (const mood of ['welcome', 'focus', 'celebrate', '../../external']) {
+      const w = worker(); let pending: Promise<unknown> = Promise.resolve();
+      w.listeners.push({ data: { json: () => ({ title: 'Scholar', mood, image: 'https://external.example/track.png', icon: 'https://external.example/icon.png' }) }, waitUntil: (value: Promise<unknown>) => { pending = value; } }); await pending;
+      const expression = mood === '../../external' ? 'welcome' : mood;
+      expect(w.showNotification).toHaveBeenCalledWith('Scholar', expect.objectContaining({ icon: `/pets/scholar/reminders/${expression}-icon-v1.png`, image: `/pets/scholar/reminders/${expression}-v1.jpg` }));
+    }
   });
 });

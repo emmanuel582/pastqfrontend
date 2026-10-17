@@ -5,8 +5,6 @@
 .welcome-scholar { position:absolute; top:0; left:calc(50% - var(--welcome-figure-height) * .2596154); display:block; height:var(--welcome-figure-height); aspect-ratio:108/208; padding:0; border:0; background:transparent; -webkit-tap-highlight-color:transparent; }
 .welcome-scholar svg { display:block; width:100%; height:100%; overflow:visible; }
 .study-app .welcome-scholar:active:not(:disabled) { transform:none; }
-.welcome-wave-hand { transform-origin:66px 57px; transform-box:view-box; }
-svg[data-ready="true"] .welcome-wave-hand { animation:scholar-hello 2.1s .2s ease-in-out infinite both; }
 .greeting-blink { opacity:0; }
 svg[data-ready="true"][data-eyes-ready="true"] .greeting-blink { animation:scholar-blink 4.8s -2s linear infinite; }
 .app-welcome-actions { width:min(100%,360px); display:flex; flex-direction:column; align-items:stretch; gap:8px; margin:0 auto; }
@@ -14,7 +12,6 @@ svg[data-ready="true"][data-eyes-ready="true"] .greeting-blink { animation:schol
 .app-welcome-actions .text-button { min-height:48px; color:var(--study-muted); font-size:14px; }
 .welcome-scholar-fallback { font-size:48px; font-weight:800; letter-spacing:-3px; }
 .welcome-scholar-fallback span { color:var(--study-accent); }
-@keyframes scholar-hello { 0%,100% { transform:rotate(0deg); } 25% { transform:rotate(-10deg); } 75% { transform:rotate(10deg); } }
 @keyframes scholar-blink { 0%,91%,96%,100% { opacity:0; } 92%,94% { opacity:1; } }
 @media (max-height:600px) { .app-welcome { padding-top:max(12px,env(safe-area-inset-top)); padding-bottom:max(10px,env(safe-area-inset-bottom)); } .app-welcome-greeting { --welcome-figure-height:35svh; padding:8px 0 14px; } .app-welcome-actions .study-primary { min-height:48px; } .app-welcome-actions .text-button { min-height:44px; } }
 @media (prefers-reduced-motion:reduce) { svg[data-ready="true"] :is(.welcome-wave-hand,.greeting-blink) { animation:none; } }

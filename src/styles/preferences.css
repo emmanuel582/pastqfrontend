@@ -43,7 +43,7 @@
 .student-switch[aria-checked="true"] { background:var(--study-button); border-color:var(--study-button); }
 .student-switch[aria-checked="true"]>span { transform:translateX(20px); background:var(--study-on-button); }
 .reminder-preview { display:flex; gap:12px; margin:26px 0; padding:18px; background:var(--study-panel); border:1px solid var(--study-line); border-radius:18px; }
-.reminder-preview>img { width:42px; height:50px; object-fit:contain; flex-shrink:0; }
+.reminder-preview>img { width:76px; height:76px; object-fit:cover; border-radius:14px; flex-shrink:0; }
 .reminder-preview>div { min-width:0; }
 .reminder-preview>div>span { display:block; color:var(--study-muted); font-size:11px; margin-bottom:6px; }
 .reminder-preview strong { display:block; font-size:14px; line-height:1.45; font-weight:650; }
