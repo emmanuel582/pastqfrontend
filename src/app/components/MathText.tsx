@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReadyImage from './ReadyImage';
+import { whenImageReady } from '../../utils/imageReadiness';
 import StudyDialog from './StudyDialog';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { sourceHtmlFragment, type SourceAssets } from "../../utils/sourceHtml";
@@ -109,10 +111,16 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImag
   const [image, setImage] = useState<{ src: string; alt: string } | null>(null);
   const [imageScale, setImageScale] = useState(1);
   const display = normalizeSpokenMath(text || "");
+  const content = useMemo(() => ({ display, html, assets }), [display, html, assets]);
+  const [readyContent, setReadyContent] = useState<typeof content | null>(null);
+  const needsMath = !html && /\$|\\\[|\\\(/.test(display);
+  const pending = Boolean(html || needsMath) && readyContent !== content;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let active = true;
+    const finish = () => { if (active) setReadyContent(content); };
 
     if (html) {
       el.replaceChildren(sourceHtmlFragment(html, assets));
@@ -121,11 +129,22 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImag
         image.setAttribute('role', 'button');
         image.setAttribute('aria-label', 'Enlarge question image');
       }
-      return;
+      const images = [...el.querySelectorAll('img')];
+      let remaining = images.length;
+      if (!remaining) finish();
+      const settled = () => { if (--remaining === 0) finish(); };
+      const cleanup = images.map(image => whenImageReady(image, settled, () => {
+        const fallback = document.createElement('span');
+        fallback.className = 'source-image-missing';
+        fallback.setAttribute('role', 'status');
+        fallback.textContent = 'Image unavailable. Reopen this material when connected.';
+        image.replaceWith(fallback); settled();
+      }));
+      return () => { active = false; cleanup.forEach(cancel => cancel()); };
     }
     fillWithEmphasis(el, display);
 
-    if (renderKatex(el)) return;
+    if (!needsMath || renderKatex(el)) { finish(); return () => { active = false; }; }
 
     // KaTeX scripts are deferred — retry briefly until auto-render is ready
     let tries = 0;
@@ -133,11 +152,12 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImag
       tries += 1;
       if (renderKatex(el) || tries > 40) {
         window.clearInterval(id);
+        finish();
       }
     }, 50);
 
-    return () => window.clearInterval(id);
-  }, [display, html, assets, zoomImages]);
+    return () => { active = false; window.clearInterval(id); };
+  }, [content, zoomImages, needsMath]);
 
   function enlarge(target: EventTarget | null) {
     if (!zoomImages || !(target instanceof HTMLImageElement)) return;
@@ -146,9 +166,9 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImag
   }
 
   return (
-    <><span ref={containerRef} className={[className, html && 'source-content'].filter(Boolean).join(' ')} style={style} onClick={event => enlarge(event.target)} onKeyDown={event => { if (zoomImages && event.target instanceof HTMLImageElement && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(event.target); } }}>
+    <><span className="content-readiness" data-pending={pending} data-images={Boolean(html && /<img\b/i.test(html))} aria-busy={pending}><span ref={containerRef} aria-hidden={pending || undefined} className={['math-content', className, html && 'source-content'].filter(Boolean).join(' ')} style={style} onClick={event => enlarge(event.target)} onKeyDown={event => { if (zoomImages && event.target instanceof HTMLImageElement && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(event.target); } }}>
       {display}
-    </span>{image && <StudyDialog title="Question image" className="question-image-dialog" onClose={() => setImage(null)}><div className="question-image-full"><img src={image.src} alt={image.alt} style={{ width: `${imageScale * 100}%`, maxHeight: imageScale === 1 ? '60dvh' : 'none' }} /></div><div className="question-image-tools"><button className="icon-button" aria-label="Zoom out image" disabled={imageScale <= 1} onClick={() => setImageScale(value => Math.max(1, value - .5))}><Minus size={18} /></button><output aria-live="polite">{Math.round(imageScale * 100)}%</output><button className="icon-button" aria-label="Zoom in image" disabled={imageScale >= 4} onClick={() => setImageScale(value => Math.min(4, value + .5))}><Plus size={18} /></button><button className="text-button" onClick={() => setImageScale(1)}><RotateCcw size={15} />Fit</button></div></StudyDialog>}</>
+    </span>{pending && <span className="skeleton-block image-skeleton" aria-hidden="true" />}</span>{image && <StudyDialog title="Question image" className="question-image-dialog" onClose={() => setImage(null)}><div className="question-image-full"><ReadyImage src={image.src} alt={image.alt} style={{ width: `${imageScale * 100}%`, maxHeight: imageScale === 1 ? '60dvh' : 'none' }} /></div><div className="question-image-tools"><button className="icon-button" aria-label="Zoom out image" disabled={imageScale <= 1} onClick={() => setImageScale(value => Math.max(1, value - .5))}><Minus size={18} /></button><output aria-live="polite">{Math.round(imageScale * 100)}%</output><button className="icon-button" aria-label="Zoom in image" disabled={imageScale >= 4} onClick={() => setImageScale(value => Math.min(4, value + .5))}><Plus size={18} /></button><button className="text-button" onClick={() => setImageScale(1)}><RotateCcw size={15} />Fit</button></div></StudyDialog>}</>
   );
 };
 

@@ -89,6 +89,7 @@ export default function ScholarMascot({ state = 'study', compact = false, animat
     '--scholar-blend': `${pose.blend}ms`,
   } as CSSProperties;
   return <div className={`scholar-scene ${compact ? 'scholar-compact' : ''}`} data-animated={animated} aria-hidden="true">
+    {!loaded && !failed && <span className="skeleton-block mascot-skeleton" />}
     {!compact && <svg className="scholar-books" viewBox="0 0 360 320" fill="none">
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58z" fill="var(--study-panel)" />
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58zM43 257h48m-51 14h61m163-4h53m-44-15h39" stroke="var(--study-art-ink)" strokeOpacity=".35" strokeWidth="1.2" />

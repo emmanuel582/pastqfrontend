@@ -93,20 +93,24 @@ function normalizeBundle(raw: any) {
   };
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(apiUrl(path));
-  if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
-  return res.json() as Promise<T>;
+async function apiGet<T>(path: string, timeoutMs?: number): Promise<T> {
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(apiUrl(path), controller ? { signal: controller.signal } : undefined);
+    if (!res.ok) throw new Error(`API ${path} failed: ${res.status}`);
+    return await res.json() as T;
+  } finally { if (timer) clearTimeout(timer); }
 }
 
 async function getGlobalLibraryFromApi() {
-  const data = await apiGet<{ bundles?: any[]; materials?: any[] }>("/api/library/bundles");
+  const data = await apiGet<{ bundles?: any[]; materials?: any[] }>("/api/library/bundles", 15000);
   const list = data.bundles || data.materials || [];
   return list.map(normalizeBundle).filter(Boolean);
 }
 
 export const getGlobalCatalog = async (): Promise<LibraryCatalog> => {
-  return apiGet<LibraryCatalog>("/api/library/catalog");
+  return apiGet<LibraryCatalog>("/api/library/catalog", 15000);
 };
 
 export const getGlobalLibrary = async () => {

@@ -28,8 +28,9 @@ export const saveExamSession = async (sessionData: any) => {
   return data[0].id;
 };
 
-export const getUserHistory = async (uid: string) => {
-  const { data, error } = await supabase.from("exam_sessions").select("*").eq("user_id", uid);
+export const getUserHistory = async (uid: string, signal?: AbortSignal) => {
+  const query = supabase.from("exam_sessions").select("*").eq("user_id", uid);
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
   if (error) throw error;
   return data;
 };

@@ -7,7 +7,7 @@ import { readStudyPreferences } from "../services/onboarding";
 import QuestionMedia, { type QuestionFigure } from "./components/QuestionMedia";
 import ProcessingScreen from "./components/ProcessingScreen";
 import ScholarMascot from "./components/ScholarMascot";
-import StudyLoading from "./components/StudyLoading";
+import ContentSkeleton from "./components/ContentSkeleton";
 import AppWelcome from "./components/AppWelcome";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
@@ -224,6 +224,8 @@ function HomeScreen({
   globalLibrary,
   libraryCatalog,
   libraryStatus,
+  offlineReady,
+  historyReady,
   onRetryLibrary,
   onOpenBundle,
   onDownloadBundle,
@@ -242,6 +244,8 @@ function HomeScreen({
   globalLibrary: any[];
   libraryCatalog: LibraryCatalog | null;
   libraryStatus: "loading" | "ready" | "error";
+  offlineReady: boolean;
+  historyReady: boolean;
   onRetryLibrary: () => void;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
@@ -256,7 +260,7 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
+        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />)}
         {tab === "library" && (
           <PreparationLibrary
             key={reminderSearch}
@@ -267,6 +271,7 @@ function HomeScreen({
             offlineLibrary={offlineLibrary}
             catalog={libraryCatalog}
             status={libraryStatus}
+            savedReady={offlineReady}
             onRetry={onRetryLibrary}
             onOpen={onOpenBundle}
             onDownload={onDownloadBundle}
@@ -275,7 +280,7 @@ function HomeScreen({
           />
         )}
         {tab === "lead" && <DiscoverScreen key={ownerId} ownerId={ownerId} />}
-        {tab === "preference" && <div className="p-5 text-[14px] text-[#8C8681]">Opening your study preferences…</div>}
+        {tab === "preference" && <ContentSkeleton kind="home" label="Loading preferences" fullPage />}
       </div>
       <BottomNav tab={tab} onTab={onTab} onSnap={() => nav("snap")} />
     </div>
@@ -775,6 +780,9 @@ function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; su
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [authReady, setAuthReady] = useState(false);
+  const [offlineReady, setOfflineReady] = useState(false);
+  const [historyReady, setHistoryReady] = useState(false);
   const [preparation, setPreparation] = useState<Preparation>({ enabled: false, activeEnvironment: null });
   const [theme, setTheme] = useState<StudyTheme>(readTheme);
   useEffect(() => followTheme(theme), [theme]);
@@ -875,6 +883,7 @@ export default function App() {
     exam: CatalogExamType,
     uni: CatalogUniversity
   ) => {
+    setRestoringImages(true);
     try {
       const ownerId = authenticatedUser.current;
       let bundle = await getOfflineBundle(mfg.bundleId, ownerId || undefined);
@@ -942,8 +951,11 @@ export default function App() {
       const lib = await getOfflineLibrary(ownerId || undefined);
       if (authenticatedUser.current !== ownerId) return;
       setOfflineLibrary(lib);
-      if (ownerId) {
-        const saved = await getSavedMaterials();
+      if (lib.length || !ownerId || !navigator.onLine) setOfflineReady(true);
+      if (ownerId && navigator.onLine) {
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+        let saved;
+        try { saved = await getSavedMaterials(controller.signal); } finally { clearTimeout(timer); }
         if (authenticatedUser.current !== ownerId) return;
         const local = new Map(lib.map(item => [item.id, item]));
         const merged = saved.map(item => {
@@ -952,10 +964,12 @@ export default function App() {
         });
         setOfflineLibrary([...merged, ...lib.filter(item => !saved.some(remote => remote.id === item.id))]);
       }
-    } catch {}
+    } catch { /* Local materials stay available when the account refresh fails. */ }
+    finally { if (authenticatedUser.current === ownerId) setOfflineReady(true); }
   };
 
   const openBundle = async (bundle: any) => {
+    setRestoringImages(true);
     try {
       const ownerId = authenticatedUser.current;
       const cached = await getOfflineBundle(bundle.id, ownerId || undefined);
@@ -1030,6 +1044,7 @@ export default function App() {
       authenticatedUser.current = user?.id || null;
       void syncReminderDeviceOwner(user?.id || null).catch(() => {});
       if (!active) return;
+      setAuthReady(true);
       if (previousUser && previousUser !== user?.id) {
         setReminderSearch(''); pendingReminder.current = null;
         setActiveQuestions(DEMO_QUESTIONS); setWrittenAnswers([]); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
@@ -1044,10 +1059,30 @@ export default function App() {
         setUserEmail(user.email || "");
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
-        if (previousUser !== user.id) setPreparation(readPreparation(user.id));
+        if (previousUser !== user.id) { setPreparation(readPreparation(user.id)); setOfflineReady(false); setHistoryReady(false); }
         void refreshOfflineLibrary().catch(() => {});
-        // Read device outcomes before any network-dependent profile/history work.
-        void readPracticeHistory(user.id).then(local => { if (active && authenticatedUser.current === user.id) setSessions(previous => mergePracticeHistory(previous, local)); }).catch(() => {});
+        // Local progress is immediate; a first-time device waits for the account read.
+        void (async () => {
+          const current = () => active && authenticatedUser.current === user.id && request === revision;
+          try {
+            const local = await readPracticeHistory(user.id).catch(() => []);
+            if (!current()) return;
+            setSessions(previous => mergePracticeHistory(previous, local));
+            if (local.length || !navigator.onLine) setHistoryReady(true);
+            if (navigator.onLine) {
+              const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
+              try {
+                const history = await getUserHistory(user.id, controller.signal);
+                if (!current()) return;
+                const merged = await cachePracticeHistory(user.id, history || []);
+                if (!current()) return;
+                setSessions(merged);
+                void syncStudyHistory(history || [], user.id).catch(() => {});
+              } finally { clearTimeout(timer); }
+            }
+          } catch { /* Keep device progress when the account is unavailable. */ }
+          finally { if (current()) setHistoryReady(true); }
+        })();
         void syncPracticeHistory(user.id).catch(() => {});
         void syncStudyHistory([], user.id).catch(() => {});
         const preferences = readStudyPreferences(user.user_metadata);
@@ -1068,15 +1103,6 @@ export default function App() {
         if (!active || request !== revision || authenticatedUser.current !== user.id) return;
 
 
-        // Fetch real sessions from Supabase (silently fail if table missing)
-        try {
-          const history = await getUserHistory(user.id);
-          if (!active || request !== revision) return;
-          const merged = await cachePracticeHistory(user.id, history || []);
-          if (!active || request !== revision || authenticatedUser.current !== user.id) return;
-          setSessions(merged);
-          void syncStudyHistory(history || [], user.id).catch(() => {});
-        } catch {}
         // Load offline library from IndexedDB
         try {
           await refreshOfflineLibrary();
@@ -1087,6 +1113,8 @@ export default function App() {
           await refreshGlobalLibrary();
         } catch {}
       } else {
+        setHistoryReady(true);
+        setOfflineReady(true);
         setSessions([]);
         setOfflineLibrary([]);
         setUserName("");
@@ -1219,6 +1247,8 @@ export default function App() {
           globalLibrary={globalLibrary}
           libraryCatalog={libraryCatalog}
           libraryStatus={libraryStatus}
+          offlineReady={offlineReady}
+          historyReady={historyReady}
           onRetryLibrary={() => { void refreshGlobalLibrary(); }}
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
@@ -1333,8 +1363,8 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
-      case "practice-history": return <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
+      case "preference": return !historyReady ? <ContentSkeleton kind="home" label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "practice-history": return !historyReady ? <ContentSkeleton label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
@@ -1348,7 +1378,7 @@ export default function App() {
   return (
     <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
       <div className="h-full w-full overflow-hidden">
-        {restoringImages ? <StudyLoading message="Restoring your saved question images…" /> : renderScreen()}
+        {!authReady ? <ContentSkeleton kind="page" label="Opening PastQ" fullPage /> : restoringImages ? <ContentSkeleton kind="form" label="Loading your material" fullPage /> : renderScreen()}
       </div>
     </div>
   );

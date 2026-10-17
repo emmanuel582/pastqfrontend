@@ -18,11 +18,22 @@
       <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" integrity="sha384-43gviWU0YVjaDtb/GhzOouOXtZMP/7XUzwPTstBeZFe/+rCMvRwr4yROQP43s0Xk" crossorigin="anonymous"></script>
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
       
+    <style>
+        .boot-skeleton { box-sizing:border-box; min-height:100dvh; padding:32px max(24px,calc((100vw - 860px)/2)); background:#faf6f0; }
+        html[data-theme="dark"] .boot-skeleton { background:#151515; }
+        .boot-skeleton span { display:block; height:14px; margin-bottom:18px; border-radius:5px; background:#eadfd3; }
+        html[data-theme="dark"] .boot-skeleton span { background:#292725; }
+        .boot-skeleton span:first-child { width:72px; height:24px; margin-bottom:64px; }
+        .boot-skeleton span:nth-child(2) { width:45%; height:32px; }
+        .boot-skeleton span:nth-child(3) { width:30%; }
+        .boot-skeleton span:nth-child(4) { height:210px; margin-top:32px; border-radius:16px; }
+      </style>
     </head>
 
     <body>
       
-      <div id="root"></div>
+      <div id="root"><div class="boot-skeleton" role="status" aria-label="Opening PastQ" aria-busy="true"><div aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div>
+      <noscript>Enable JavaScript to open PastQ.</noscript>
       <script type="module" src="/src/main.tsx"></script>
       
     </body>

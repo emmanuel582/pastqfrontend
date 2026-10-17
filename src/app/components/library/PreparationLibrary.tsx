@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, Download, Plus, Search, Upload } from 'lucide-react';
 import { StudyLibrary } from './StudyLibrary';
+import ContentSkeleton from '../ContentSkeleton';
 import { publisherName, savedEnvironments, type Preparation } from '../../../services/preparation';
 
 type Props = Parameters<typeof StudyLibrary>[0] & { preparation: Preparation; onPreparation: (value: Preparation) => void };
@@ -10,6 +11,7 @@ export default function PreparationLibrary({ preparation, onPreparation, ...libr
   const active = environments.find(environment => environment.id === preparation.activeEnvironment);
   const needle = search.trim().toLowerCase();
   const matches = (material: any) => [material.title, material.name, publisherName(material), ...new Set((material.questions || []).map((question: any) => question.subject))].filter(Boolean).some(value => String(value).toLowerCase().includes(needle));
+  if (preparation.enabled && library.savedReady === false) return <ContentSkeleton kind="home" label="Loading saved exams" fullPage />;
   if (!preparation.enabled) return <StudyLibrary {...library} />;
   if (exploring) return <div className="preparation-explore"><button className="text-button preparation-return" onClick={() => { setExploring(false); setSearch(''); }}><ArrowLeft size={17} />Your downloaded exams</button><StudyLibrary {...library} /></div>;
   const visible = environments.filter(environment => !needle || `${environment.name} ${environment.organization}`.toLowerCase().includes(needle) || environment.materials.some(matches));

@@ -1,0 +1,51 @@
+.skeleton-block { display:block; position:relative; overflow:hidden; border-radius:5px; background:rgba(var(--study-wash-rgb),.075); }
+.skeleton-block::after { content:''; position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg,transparent,rgba(var(--study-wash-rgb),.055),transparent); animation:skeleton-sweep 1.65s ease-in-out infinite; }
+.content-skeleton { width:100%; min-width:0; padding:18px 0; }
+.skeleton-full-page { height:100%; overflow:auto; padding:28px clamp(20px,5vw,64px); background:var(--study-bg); }
+.skeleton-shapes { width:100%; max-width:860px; margin:0 auto; }
+.skeleton-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:52px; }
+.skeleton-brand { width:72px; height:23px; }
+.skeleton-circle { width:36px; height:36px; border-radius:50%; }
+.skeleton-title { width:45%; height:32px; margin-bottom:14px; }
+.skeleton-short { width:60%; }
+.skeleton-shapes>.skeleton-short { height:12px; width:30%; margin-bottom:32px; }
+.skeleton-hero { height:210px; margin:24px 0; border-radius:16px; }
+.skeleton-rows { display:grid; gap:0; }
+.skeleton-row { min-height:86px; display:flex; align-items:center; gap:16px; padding:20px 0; border-bottom:1px solid var(--study-line); }
+.skeleton-thumbnail { width:46px; height:46px; border-radius:12px; flex-shrink:0; }
+.skeleton-row-copy { display:grid; gap:12px; flex:1; }
+.skeleton-row-copy>.skeleton-block { height:12px; max-width:460px; }
+.skeleton-row-copy>.skeleton-short { height:9px; max-width:300px; }
+.skeleton-form .skeleton-row { min-height:96px; border:0; }
+.skeleton-form .skeleton-row-copy>.skeleton-block:first-child { height:12px; width:30%; }
+.skeleton-form .skeleton-row-copy>.skeleton-short { height:44px; width:100%; max-width:none; }
+.skeleton-question { display:grid; gap:12px; margin:28px 0; }
+.skeleton-question>.skeleton-block { height:17px; }
+.skeleton-question .skeleton-row { min-height:60px; }
+.ready-image { position:relative; display:inline-grid; vertical-align:middle; overflow:hidden; min-width:0; }
+.ready-image>img { display:block; max-width:100%; }
+.ready-image[data-state="pending"]>img { visibility:hidden; }
+.image-skeleton { position:absolute; inset:0; min-height:100%; border-radius:inherit; }
+.image-fallback { display:grid; place-items:center; min-height:44px; font-size:12px; color:var(--study-muted); text-align:center; }
+.session-logo .ready-image,.upload-file-preview .ready-image { width:100%; height:100%; }
+.upload-file-preview { position:relative; }
+.student-identity>.ready-image { width:46px; height:46px; border-radius:50%; flex-shrink:0; }
+.student-identity>.ready-image img { width:100%; height:100%; object-fit:cover; }
+.reminder-preview>.ready-image { width:76px; height:76px; border-radius:14px; flex-shrink:0; }
+.reminder-preview>.ready-image img { width:100%; height:100%; object-fit:cover; }
+.auth-greeting-scene .ready-image { position:absolute; top:0; right:0; height:var(--greeting-size); width:calc(var(--greeting-size) * .666667); }
+.auth-greeting-scene .ready-image .scholar-account-pose { position:static; width:100%; height:100%; }
+.question-figure .ready-image { display:grid; width:100%; min-height:70px; }
+.question-image-full>.ready-image { display:grid; width:100%; }
+.content-readiness { display:block; position:relative; min-width:0; }
+.content-readiness[data-pending="true"] { min-height:34px; }
+.content-readiness[data-pending="true"]>.math-content { visibility:hidden; }
+.content-readiness[data-images="true"][data-pending="true"] { min-height:120px; }
+.content-readiness>.image-skeleton { max-height:180px; }
+.mascot-skeleton { position:absolute; width:45%; height:75%; bottom:10%; border-radius:45% 45% 16% 16%; }
+.welcome-scholar { position:relative; }
+.welcome-scholar>.mascot-skeleton { left:27.5%; }
+.skeleton-inline { display:inline-block; width:100px; height:10px; vertical-align:middle; }
+@keyframes skeleton-sweep { to { transform:translateX(100%); } }
+@media(max-width:600px) { .skeleton-full-page { padding:24px 20px; } .skeleton-top { margin-bottom:36px; } .skeleton-title { width:65%; } .skeleton-hero { height:190px; } }
+@media(prefers-reduced-motion:reduce) { .skeleton-block::after { animation:none; } }

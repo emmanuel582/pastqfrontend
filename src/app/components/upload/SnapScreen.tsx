@@ -4,6 +4,7 @@ import { supabase } from '../../../services/supabase';
 import { uploadMaterial, type MaterialUploadProgress } from '../../../services/materialUpload';
 import { classifyMaterialFiles, isPhoneCameraDevice, MATERIAL_ACCEPT } from '../../../utils/materialFiles';
 import { sortUploadFiles } from '../../../services/vision';
+import ReadyImage from '../ReadyImage';
 import ScholarMascot from '../ScholarMascot';
 
 export type UploadDraft = { files: File[]; name: string };
@@ -29,7 +30,7 @@ function FilePreview({ file }: { file: File }) {
     const objectUrl = URL.createObjectURL(file); setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <span className="upload-file-preview">{url ? <img src={url} alt="" onError={() => setUrl('')} /> : <FileText size={20} strokeWidth={1.4} />}</span>;
+  return <span className="upload-file-preview">{url ? <ReadyImage src={url} alt="" fallback={<FileText size={20} strokeWidth={1.4} />} /> : file.type.startsWith('image/') ? <span className="skeleton-block image-skeleton" /> : <FileText size={20} strokeWidth={1.4} />}</span>;
 }
 
 function fileSize(bytes: number) { return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`; }

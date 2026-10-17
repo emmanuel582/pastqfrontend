@@ -1,6 +1,6 @@
 import MathText from "./MathText";
 import { apiUrl } from "../../services/api";
-import { useState } from 'react';
+import ReadyImage from './ReadyImage';
 
 export interface QuestionFigure {
   url?: string | null;
@@ -22,10 +22,9 @@ export function questionFigureSource(url: string): string | null {
 }
 
 function Figure({ figure }: { figure: QuestionFigure }) {
-  const [failed, setFailed] = useState(false);
   const source = questionFigureSource(figure.url || '');
   return <figure className="question-figure">
-    {source && !failed ? <img src={source} alt={figure.description || figure.caption || 'Question figure'} loading="eager" decoding="async" className="max-w-full h-auto mx-auto" onError={() => setFailed(true)} /> : <p className="source-image-missing" role="status">Image unavailable. Reopen this material when connected.</p>}
+    {source ? <ReadyImage src={source} alt={figure.description || figure.caption || 'Question figure'} loading="eager" decoding="async" className="max-w-full h-auto mx-auto" /> : <p className="source-image-missing" role="status">Image unavailable. Reopen this material when connected.</p>}
     {figure.caption && <figcaption className="text-[11px] text-[#8C8681] text-center mt-1">{figure.caption}</figcaption>}
   </figure>;
 }

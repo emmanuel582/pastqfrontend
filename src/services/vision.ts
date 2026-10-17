@@ -143,11 +143,11 @@ export async function confirmVisionMaterial(sessionId: string, questions: unknow
   return body;
 }
 
-export async function getSavedMaterials() {
+export async function getSavedMaterials(signal?: AbortSignal) {
   const materials: any[] = [];
   let offset: number | null = 0;
   do {
-    const response = await authenticatedFetch(`/api/vision/materials?offset=${offset}&limit=100`);
+    const response = await authenticatedFetch(`/api/vision/materials?offset=${offset}&limit=100`, { signal });
     if (!response.ok) throw new Error('Could not load your saved uploads.');
     const body = await response.json();
     materials.push(...(body.materials || []));
