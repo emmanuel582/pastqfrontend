@@ -28,7 +28,14 @@ export function sourceHtmlFragment(html: string, assets?: SourceAssets): Documen
       const reference = /^pastq-asset:([a-f0-9]{64})$/.exec(src);
       if (reference) {
         const asset = assets?.[reference[1]];
-        if (!asset) return;
+        if (!asset) {
+          const missing = document.createElement('span');
+          missing.className = 'source-image-missing';
+          missing.setAttribute('role', 'status');
+          missing.textContent = 'Image unavailable. Download this material again.';
+          parent.appendChild(missing);
+          return;
+        }
         src = `data:${asset.mime};base64,${asset.data}`;
       }
       if (!/^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/.test(src)) return;

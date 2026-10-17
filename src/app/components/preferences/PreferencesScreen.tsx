@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bell, Check, ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, BookOpen, Check, ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
 import ScholarMascot from '../ScholarMascot';
 import { type StudyTheme } from '../../../utils/theme';
 import { getReminders, saveReminders, enableReminders, testReminder, reminderPortrait, currentDeviceId, notificationSupport, deviceTimezone, syncStudyHistory, type ReminderSettings, type ReminderSnapshot } from '../../../services/reminders';
@@ -12,7 +12,7 @@ function progressData(sessions: History[]) {
     return total > 0 && Number.isFinite(score) && score >= 0 && score <= total && Number.isFinite(at) ? [{ score: Math.round(score / total * 100), at }] : [];
   }).sort((a, b) => a.at - b.at);
 }
-export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onProgress, onStudy = onProgress }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onProgress: () => void; onStudy?: () => void }) {
+export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onProgress, onStudy = onProgress, preparationEnabled = false, onPreparation }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onProgress: () => void; onStudy?: () => void; preparationEnabled?: boolean; onPreparation?: (enabled: boolean) => void }) {
   const data = progressData(sessions), recent = data.slice(-10), average = data.length ? Math.round(data.reduce((sum, item) => sum + item.score, 0) / data.length) : null;
   const [reminders, setReminders] = useState<ReminderSnapshot | null>(null);
   useEffect(() => { let active = true; getReminders(ownerId).then(value => { if (active) setReminders(value); }).catch(() => {}); return () => { active = false; }; }, [ownerId]);
@@ -31,6 +31,7 @@ export function PreferencesScreen({ ownerId, name, email, avatar, sessions, them
         </svg><div className="student-chart-dates"><span>{new Date(recent[0].at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span><span>{new Date(recent[recent.length - 1].at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</span></div></div> : <div className="student-chart-empty">Complete a session to see your progress.</div>}
       </section> : <section className="student-first-progress"><ScholarMascot state="study" /><h2>Start with one paper.</h2><p>Your progress will grow as you practise.</p><button className="study-primary" onClick={onStudy}>Find your next step<ArrowRight size={16} /></button></section>}
       <div className="student-settings-list"><button onClick={onTheme}><span className="student-setting-icon">{theme === 'dark' ? <Moon size={20} /> : theme === 'light' ? <Sun size={20} /> : <Monitor size={20} />}</span><span><strong>Theme</strong><small>{label(theme)}{theme === 'system' ? ' · Follows your device' : ''}</small></span><ChevronRight size={19} /></button><button onClick={onReminders}><span className="student-setting-icon"><Bell size={20} /></span><span><strong>Study reminders</strong><small>{reminderLabel}</small></span><ChevronRight size={19} /></button></div>
+      {onPreparation && <div className="preparation-preference"><span className="student-setting-icon"><BookOpen size={20} /></span><div><strong>Preparation environment</strong><small>Open your downloaded exams first.</small></div><button className="student-switch" type="button" role="switch" aria-label="Preparation environment" aria-checked={preparationEnabled} onClick={() => onPreparation(!preparationEnabled)}><span /></button></div>}
     </div>
   </main>;
 }

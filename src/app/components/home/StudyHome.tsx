@@ -3,11 +3,11 @@ import ScholarMascot from '../ScholarMascot';
 import { studyPlan, gradedPercent } from '../../../utils/studyPlan';
 import type { PracticeSummary } from '../../../services/practiceHistory';
 
-export default function StudyHome({ name, materials, sessions, onOpen, onLibrary, onUpload }: { name: string; materials: any[]; sessions: PracticeSummary[]; onOpen: (material: any) => void; onLibrary: () => void; onUpload: () => void }) {
+export default function StudyHome({ name, materials, sessions, onOpen, onLibrary, onUpload, environmentName }: { name: string; materials: any[]; sessions: PracticeSummary[]; onOpen: (material: any) => void; onLibrary: () => void; onUpload: () => void; environmentName?: string }) {
   const plan = studyPlan(materials, sessions), first = name.trim().split(/\s+/)[0] || 'there';
   const scores = sessions.map(gradedPercent).filter((value): value is number => value !== null);
   return <main className="study-app study-home personal-home">
-    <header className="study-topbar"><span className="wordmark">past<span>q</span></span><span className="home-greeting">Your study room</span></header>
+    <header className="study-topbar"><span className="wordmark">past<span>q</span></span><span className="home-greeting">{environmentName || 'Your study room'}</span></header>
     <div className="home-content"><h1>Hi, {first}.</h1>
       {plan.material ? <>
         <section className="home-next" aria-labelledby="home-next-title"><div className="home-next-copy"><span className="home-next-label">{plan.reason}</span><h2 id="home-next-title">{plan.material.title || plan.material.name || 'Your saved paper'}</h2><div className="home-next-meta"><span><Download size={14} />Ready offline</span><span>{plan.material.questions.length} questions</span>{plan.percent !== null && <span>Last score {plan.percent}%</span>}</div><button className="study-primary" onClick={() => onOpen(plan.material)}>Practice<ArrowRight size={17} /></button></div><ScholarMascot state={plan.percent !== null && plan.percent < 75 ? 'encourage' : 'study'} /></section>

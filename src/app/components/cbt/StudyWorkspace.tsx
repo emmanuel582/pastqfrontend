@@ -1,5 +1,6 @@
 import ScholarMascot from '../ScholarMascot';
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import Dialog from '../StudyDialog';
 import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Flag, Grid2X2, X, Calculator, PenLine, Grip, Maximize2, Eraser, Undo2, Trash2, Minus, Plus, BookOpen, RotateCcw } from 'lucide-react';
 import MathText from '../MathText';
 import QuestionMedia, { type QuestionFigure } from '../QuestionMedia';
@@ -16,19 +17,6 @@ export interface StudyQuestion {
 }
 type Destination = 'home' | 'results' | 'exam' | 'review-answers';
 const time = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-
-function Dialog({ title, children, onClose, drawer = false }: { title: string; children: ReactNode; onClose: () => void; drawer?: boolean }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef(onClose); closeRef.current = onClose;
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement;
-    const dialog = ref.current; dialog?.showModal();
-    return () => { dialog?.close(); previous?.focus(); };
-  }, []);
-  return <dialog ref={ref} className={`study-dialog ${drawer ? 'question-drawer' : ''}`} onCancel={e => { e.preventDefault(); closeRef.current(); }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className="dialog-heading"><h2>{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></div>{children}
-  </dialog>;
-}
 
 function Feedback({ question, assets }: { question: StudyQuestion; assets?: SourceAssets }) {
   const written = question.type === 'short_answer';
@@ -154,8 +142,11 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
   const [boardHeight, setBoardHeight] = useState(() => Math.min(310, Math.max(150, window.innerHeight * .34)));
   const divider = useRef<{ start: number; dimension: number; mobile: boolean } | null>(null);
   const questionScroll = useRef<HTMLDivElement>(null);
+  const subjectPositions = useRef(new Map<string, number>());
+  const subjectGroups = useMemo(() => [...new Set(questions.map(question => question.subject))], [questions]);
   useEffect(() => { questionScroll.current?.scrollTo({ top: 0 }); }, [currentQ]);
   const question = questions[currentQ];
+  useEffect(() => { if (question) subjectPositions.current.set(question.subject, currentQ); }, [question, currentQ]);
   const selected = answers[currentQ] ?? null;
   const summary = sessionSummary(questions, answers);
   const reveal = review;
@@ -173,13 +164,13 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
   }, [currentQ, review, reveal, question, showModal, navigator, calculator, board, onAnswer, onFlag]);
   if (!question) return <div className="study-app empty-state"><BookOpen size={36} /><h1>No questions available</h1></div>;
   return <main className={`study-app exam-workspace ${board ? 'board-open' : ''}`} style={{ '--board-width': `${boardWidth}px`, '--board-height': `${boardHeight}px`, '--question-scale': scale } as CSSProperties}>
-    <header className="exam-header"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><div className="exam-session"><strong>{question.subject}</strong></div>{review ? <button type="button" className="exam-clock exam-complete" onClick={() => nav('home')}><Check size={17} />Complete</button> : <div className={`exam-clock ${timeLeft <= duration * .1 ? 'time-low' : ''}`} role="timer" aria-label="Time remaining"><Clock3 size={17} /><span>{time(timeLeft)}</span></div>}{!review && <button className="study-secondary exam-finish" onClick={() => onModal(true)}>Finish<ArrowRight size={16} /></button>}</header>
+    <header className="exam-header"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><div className="exam-session">{subjectGroups.length > 1 ? <select aria-label="Switch subject" value={question.subject} onChange={event => { const subject = event.target.value; const remembered = subjectPositions.current.get(subject); go(remembered != null && questions[remembered]?.subject === subject ? remembered : questions.findIndex(question => question.subject === subject)); }}>{subjectGroups.map(subject => <option key={subject} value={subject}>{subject} · {questions.filter(question => question.subject === subject).length}</option>)}</select> : <strong>{question.subject}</strong>}</div>{review ? <button type="button" className="exam-clock exam-complete" onClick={() => nav('home')}><Check size={17} />Complete</button> : <div className={`exam-clock ${timeLeft <= duration * .1 ? 'time-low' : ''}`} role="timer" aria-label="Time remaining"><Clock3 size={17} /><span>{time(timeLeft)}</span></div>}{!review && <button className="study-secondary exam-finish" onClick={() => onModal(true)}>Finish<ArrowRight size={16} /></button>}</header>
     <div className="session-progress" aria-label={`${summary.answered} of ${questions.length} answered`}><div style={{ width: `${summary.answered / questions.length * 100}%` }} /></div>
     <div className="exam-body">
       <aside className="exam-rail"><button className="rail-navigator" aria-label="Open question navigator" onClick={() => setNavigator(true)}><Grid2X2 size={21} /><span>{currentQ + 1}<small>/{questions.length}</small></span><ChevronRight size={15} /></button><div className="rail-line" /><button className={`rail-tool ${calculator ? 'active' : ''}`} aria-label="Open calculator" aria-pressed={calculator} onClick={() => setCalculator(v => !v)}><Calculator size={21} /><span>Calculate</span></button><button className={`rail-tool ${board ? 'active' : ''}`} aria-label="Open drawing board" aria-pressed={board} onClick={() => setBoard(v => !v)}><PenLine size={21} /><span>Work out</span></button></aside>
       <div className="question-column"><div className="question-scroll" ref={questionScroll}><article className="question-paper"><div className="question-meta"><span>QUESTION {String(currentQ + 1).padStart(2, '0')} <small>/ {questions.length}</small></span><div className="question-controls"><button className="icon-button" aria-label="Decrease question text" disabled={scale <= .9} onClick={() => setScale(v => Math.max(.9, v - .1))}><Minus size={15} /><span>A</span></button><button className="icon-button" aria-label="Increase question text" disabled={scale >= 1.4} onClick={() => setScale(v => Math.min(1.4, v + .1))}><Plus size={15} /><span>A</span></button>{!review && <button className={`icon-button flag-button ${flagged[currentQ] ? 'active' : ''}`} aria-label={flagged[currentQ] ? 'Unflag question' : 'Flag question'} aria-pressed={flagged[currentQ]} onClick={() => onFlag(currentQ)}><Flag size={18} /></button>}</div></div>
       <QuestionMedia passage={question.passage} figures={question.figures} />
-      <h1 className="question-stem"><MathText text={question.question} html={question.questionHtml} assets={assets} /></h1>
+      <div className="question-stem" role="heading" aria-level={1}><MathText text={question.question} html={question.questionHtml} assets={assets} zoomImages /></div>
       {question.type === 'short_answer' && <div className="written-answer"><label htmlFor="written-response">Your answer</label><textarea id="written-response" value={writtenAnswers[currentQ] || ''} readOnly={review} placeholder="Type your answer" onChange={event => onWrittenAnswer?.(currentQ, event.target.value)} /></div>}
       {question.type !== 'short_answer' && <div className="answer-options" role="group" aria-label="Answer choices">{question.options.map((option, i) => <button key={i} disabled={reveal} aria-pressed={selected === i} className={`answer-option ${selected === i ? 'selected' : ''} ${reveal && key === i ? 'correct-answer' : ''} ${reveal && selected === i && key !== null && key !== i ? 'incorrect-answer' : ''}`} onClick={() => onAnswer(currentQ, i)}><span className="answer-letter">{String.fromCharCode(65 + i)}</span><span className="answer-word"><MathText text={option} html={question.optionsHtml?.[i]} assets={assets} /></span>{reveal && key === i ? <Check size={19} /> : reveal && selected === i && key !== null ? <X size={18} /> : selected === i ? <span className="selection-mark" /> : null}{reveal && <span className="answer-state">{selected === i ? 'Your answer' : ''}</span>}</button>)}</div>}
       {reveal && <Feedback question={question} assets={assets} />}

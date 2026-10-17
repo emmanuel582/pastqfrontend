@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import StudyDialog from './StudyDialog';
+import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { sourceHtmlFragment, type SourceAssets } from "../../utils/sourceHtml";
 
 interface MathTextProps {
   text: string;
   html?: string;
   assets?: SourceAssets;
+  zoomImages?: boolean;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -101,8 +104,10 @@ function renderKatex(el: HTMLElement) {
   }
 }
 
-export const MathText: React.FC<MathTextProps> = ({ text, html, assets, className, style }) => {
+export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImages = false, className, style }) => {
   const containerRef = useRef<HTMLSpanElement>(null);
+  const [image, setImage] = useState<{ src: string; alt: string } | null>(null);
+  const [imageScale, setImageScale] = useState(1);
   const display = normalizeSpokenMath(text || "");
 
   useEffect(() => {
@@ -111,6 +116,11 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, classNam
 
     if (html) {
       el.replaceChildren(sourceHtmlFragment(html, assets));
+      if (zoomImages) for (const image of el.querySelectorAll('img')) {
+        image.tabIndex = 0;
+        image.setAttribute('role', 'button');
+        image.setAttribute('aria-label', 'Enlarge question image');
+      }
       return;
     }
     fillWithEmphasis(el, display);
@@ -127,12 +137,18 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, classNam
     }, 50);
 
     return () => window.clearInterval(id);
-  }, [display, html, assets]);
+  }, [display, html, assets, zoomImages]);
+
+  function enlarge(target: EventTarget | null) {
+    if (!zoomImages || !(target instanceof HTMLImageElement)) return;
+    setImageScale(1);
+    setImage({ src: target.src, alt: target.alt });
+  }
 
   return (
-    <span ref={containerRef} className={[className, html && 'source-content'].filter(Boolean).join(' ')} style={style}>
+    <><span ref={containerRef} className={[className, html && 'source-content'].filter(Boolean).join(' ')} style={style} onClick={event => enlarge(event.target)} onKeyDown={event => { if (zoomImages && event.target instanceof HTMLImageElement && ['Enter', ' '].includes(event.key)) { event.preventDefault(); enlarge(event.target); } }}>
       {display}
-    </span>
+    </span>{image && <StudyDialog title="Question image" className="question-image-dialog" onClose={() => setImage(null)}><div className="question-image-full"><img src={image.src} alt={image.alt} style={{ width: `${imageScale * 100}%`, maxHeight: imageScale === 1 ? '60dvh' : 'none' }} /></div><div className="question-image-tools"><button className="icon-button" aria-label="Zoom out image" disabled={imageScale <= 1} onClick={() => setImageScale(value => Math.max(1, value - .5))}><Minus size={18} /></button><output aria-live="polite">{Math.round(imageScale * 100)}%</output><button className="icon-button" aria-label="Zoom in image" disabled={imageScale >= 4} onClick={() => setImageScale(value => Math.min(4, value + .5))}><Plus size={18} /></button><button className="text-button" onClick={() => setImageScale(1)}><RotateCcw size={15} />Fit</button></div></StudyDialog>}</>
   );
 };
 

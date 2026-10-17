@@ -6,6 +6,10 @@ const image = 'data:image/png;base64,iVBORw0KGgo=';
 function render(html: string) { const el = document.createElement('div'); el.append(sourceHtmlFragment(html)); return el; }
 
 describe('original question formatting', () => {
+  it('makes an absent downloaded image explicit instead of silently dropping it', () => {
+    const el = render(`<img src="pastq-asset:${'b'.repeat(64)}">`);
+    expect(el.querySelector('[role=status]')?.textContent).toContain('Download this material again');
+  });
   it('resolves shared image assets locally and rejects executable asset types', () => {
     const key = 'a'.repeat(64), el = document.createElement('div');
     el.append(sourceHtmlFragment(`<img src="pastq-asset:${key}">`, { [key]: { mime: 'image/png', data: 'iVBORw0KGgo=' } }));

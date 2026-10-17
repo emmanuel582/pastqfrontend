@@ -1,70 +1,128 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Clock3, Pencil, Plus, Search, X } from 'lucide-react';
 import ScholarMascot from '../ScholarMascot';
-import { ArrowLeft, ArrowRight, Check, BookOpen, Clock3 } from 'lucide-react';
-import { selectSessionQuestions, customDurationSeconds, getAvailableSubjects, getAvailableYears, getAvailableTopics, getQuestionCountBySubject, getQuestionCountByTopic, getQuestionCountByYear, type CbtQuestion } from '../../../utils/cbtFilters';
+import StudyDialog from '../StudyDialog';
+import { customDurationSeconds, getAvailableSubjects, getAvailableTopics, isCbtQuestion, type CbtQuestion } from '../../../utils/cbtFilters';
+import { buildSubjectSession, calendarYear, defaultSubjectSettings, subjectPapers, subjectPool, subjectQuestionCount, subjectYears, type SubjectSettings } from '../../../utils/subjectSession';
+import { environmentFor, publisherName } from '../../../services/preparation';
 
 export interface CustomizeCbtBundle { id: string; title?: string; name?: string; kind?: string; examType?: string; university?: string; manufacturer?: string; questions: CbtQuestion[] }
 interface Props {
   bundle: CustomizeCbtBundle;
+  ownerId?: string;
   onBack?: () => void;
   onProceed: (opts: { questions: CbtQuestion[]; durationSeconds: number; mode: 'practice' | 'full'; subjects: string[]; years: string[]; topics: string[] }) => void | Promise<void>;
 }
-export function CustomizeCbtScreen({ bundle, onProceed, onBack }: Props) {
+type Step = 'subjects' | 'settings' | 'review';
+const steps: Step[] = ['subjects', 'settings', 'review'];
+const stepNames = { subjects: 'Subjects', settings: 'Session', review: 'Review' };
+
+export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack }: Props) {
   const subjects = useMemo(() => getAvailableSubjects(bundle), [bundle]);
-  const [selectedSubjects, setSubjects] = useState(subjects);
-  const [subjectSearch, setSubjectSearch] = useState('');
-  const [mode, setMode] = useState<'practice' | 'full'>('practice');
-  const [duration, setDuration] = useState('20');
-  const durationEdited = useRef(false);
-  const [limit, setLimit] = useState(bundle.kind === 'utme-bank' ? '20' : 'all');
-  const [shuffle, setShuffle] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const starting = useRef(false);
-  const [error, setError] = useState('');
-  const [allTopics, setAllTopics] = useState(true);
-  const [selectedTopics, setTopics] = useState<string[]>([]);
-  const [allYears, setAllYears] = useState(true);
-  const [selectedYears, setYears] = useState<string[]>([]);
-  const years = useMemo(() => getAvailableYears(bundle.questions, selectedSubjects), [bundle.questions, selectedSubjects]);
-  const subjectCounts = useMemo(() => getQuestionCountBySubject(bundle.questions), [bundle.questions]);
-  const yearCounts = useMemo(() => getQuestionCountByYear(bundle.questions, selectedSubjects), [bundle.questions, selectedSubjects]);
-  const yearPool = useMemo(() => selectSessionQuestions(bundle.questions, { subjects: selectedSubjects, years: allYears ? null : selectedYears, topics: null }), [bundle.questions, selectedSubjects, allYears, selectedYears]);
-  const topics = useMemo(() => getAvailableTopics(yearPool), [yearPool]);
-  const topicCounts = useMemo(() => getQuestionCountByTopic(yearPool), [yearPool]);
-  useEffect(() => { setSubjects(subjects); setAllTopics(true); setTopics([]); setAllYears(true); setYears([]); }, [bundle.id]);
-  useEffect(() => { setTopics(previous => previous.filter(topic => topics.includes(topic))); }, [topics]);
-  useEffect(() => { setYears(previous => previous.filter(year => years.includes(year))); }, [years]);
-  const filtered = useMemo(() => selectSessionQuestions(yearPool, { subjects: selectedSubjects, years: null, topics: allTopics ? null : selectedTopics }), [yearPool, selectedSubjects, allTopics, selectedTopics]);
+  const bySubject = useMemo(() => {
+    const map: Record<string, CbtQuestion[]> = Object.create(null);
+    for (const question of bundle.questions) if (isCbtQuestion(question)) (map[question.subject] ||= []).push(question);
+    return map;
+  }, [bundle.questions]);
+  const storageKey = ownerId ? `pastq-session:${ownerId}:${bundle.id}` : '';
+  const initial = useMemo(() => {
+    let saved: any;
+    try { saved = storageKey ? JSON.parse(localStorage.getItem(storageKey) || 'null') : null; } catch {}
+    const settings: Record<string, SubjectSettings> = Object.create(null);
+    for (const subject of subjects) {
+      const defaults = defaultSubjectSettings(bySubject[subject] || []), old = saved?.settings?.[subject];
+      settings[subject] = old && ['paper', 'topic'].includes(old.studyBy) && (old.studyBy !== 'paper' || subjectYears(bySubject[subject] || []).includes(old.year))
+        && (old.topics === null || Array.isArray(old.topics) && old.topics.every((topic: unknown) => typeof topic === 'string'))
+        && (old.count === 'all' || /^\d{1,5}$/.test(old.count)) ? { ...defaults, ...old } : defaults;
+    }
+    const selected = Array.isArray(saved?.subjects) ? saved.subjects.filter((subject: string) => subjects.includes(subject) && bySubject[subject]?.length) : subjects.length <= 4 ? subjects.filter(subject => bySubject[subject]?.length) : [];
+    return { settings, selected, mode: saved?.mode === 'full' ? 'full' as const : 'practice' as const, duration: typeof saved?.duration === 'string' ? saved.duration : '20', shuffle: saved?.shuffle === true };
+  }, [storageKey, subjects, bySubject]);
+  const [selected, setSelected] = useState<string[]>(initial.selected);
+  const [settings, setSettings] = useState(initial.settings);
+  const [mode, setMode] = useState<'practice' | 'full'>(initial.mode);
+  const [duration, setDuration] = useState(initial.duration);
+  const [shuffle, setShuffle] = useState(initial.shuffle);
+  const [step, setStep] = useState<Step>('subjects');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [picker, setPicker] = useState(false);
+  const [topicPicker, setTopicPicker] = useState(false);
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const starting = useRef(false), durationEdited = useRef(false);
+  const scroll = useRef<HTMLDivElement>(null);
+  useEffect(() => { scroll.current?.scrollTo({ top: 0 }); }, [step, editing]);
+  useEffect(() => {
+    if (storageKey) try { localStorage.setItem(storageKey, JSON.stringify({ subjects: selected, settings, mode, duration, shuffle })); } catch {}
+  }, [storageKey, selected, settings, mode, duration, shuffle]);
+  const counts = useMemo(() => Object.fromEntries(selected.map(subject => [subject, subjectQuestionCount(bySubject[subject] || [], settings[subject])])), [selected, bySubject, settings]);
+  const count = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const invalidSubject = selected.find(subject => !counts[subject]);
   const durationSeconds = customDurationSeconds(duration);
-  const timeLabel = durationSeconds === null ? 'Set time' : `${Number(duration)} min`;
-  const topicLabel = allTopics ? 'All topics' : selectedTopics.length === 1 ? selectedTopics[0] : `${selectedTopics.length} topics`;
-  const yearLabel = allYears ? 'All years' : selectedYears.length ? selectedYears.join(', ') : 'Choose a year';
-  const count = limit === 'all' ? filtered.length : Math.min(Number(limit), filtered.length);
-  const title = bundle.title || bundle.name || bundle.manufacturer || 'Your material';
-  const empty = !selectedSubjects.length ? 'Choose a subject.' : !allYears && !selectedYears.length ? 'Choose a year.' : !allTopics && !selectedTopics.length ? 'Choose a topic.' : 'No questions match this selection.';
-  function toggle(value: string, list: string[], set: (list: string[]) => void) { set(list.includes(value) ? list.filter(item => item !== value) : [...list, value]); }
-  async function begin() {
-    if (!count || starting.current || durationSeconds === null) return;
-    starting.current = true; setBusy(true); setError('');
-    const questions = [...filtered];
-    if (shuffle) for (let i = questions.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [questions[i], questions[j]] = [questions[j], questions[i]]; }
-    try { await onProceed({ questions: questions.slice(0, count), durationSeconds, mode, subjects: selectedSubjects, years: allYears ? [] : selectedYears, topics: allTopics ? [] : selectedTopics }); }
-    catch { setError('Could not start this session. Please try again.'); setBusy(false); starting.current = false; }
+  const ready = selected.length > 0 && !invalidSubject && durationSeconds !== null;
+  const environment = environmentFor(bundle), publisher = publisherName(bundle);
+  const subtitle = [bundle.title !== environment.name ? bundle.title : '', publisher !== 'Saved material' ? publisher : ''].filter(Boolean).join(' · ');
+  function update(subject: string, changes: Partial<SubjectSettings>) { setSettings(previous => ({ ...previous, [subject]: { ...previous[subject], ...changes } })); setError(''); }
+  function toggleSubject(subject: string) { setSelected(previous => previous.includes(subject) ? previous.filter(value => value !== subject) : [...previous, subject]); }
+  function back() { if (editing) setEditing(null); else if (step !== 'subjects') setStep(steps[steps.indexOf(step) - 1]); else onBack?.(); }
+  function description(subject: string) {
+    const value = settings[subject];
+    return [value.studyBy === 'paper' ? value.paper || value.year : 'Topic practice', value.topics === null ? 'All topics' : `${value.topics.length} topics`, `${counts[subject] || 0} questions`].join(' · ');
   }
-  const start = <button className="study-primary" disabled={!count || busy || durationSeconds === null} onClick={begin}>{busy ? 'Preparing…' : 'Start session'}<ArrowRight size={18} /></button>;
-  return <main className="study-app setup-screen">
-    <header className="study-topbar">{onBack && <button className="icon-button" aria-label="Back to Browse" onClick={onBack}><ArrowLeft size={20} /></button>}<span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span></header>
-    <div className="setup-scroll"><div className="setup-heading"><div><h1>{bundle.kind === 'utme-bank' ? 'UTME' : 'Your session.'}</h1><p>{bundle.kind === 'utme-bank' ? `${bundle.questions.length.toLocaleString()} questions · ${subjects.length} subjects` : title}</p></div><div className="setup-mobile-scholar"><ScholarMascot state="thinking" compact /></div></div>
-      <div className="setup-layout"><div className="setup-fields">
-        <section className="setup-section"><div className="mode-choices">{(['practice', 'full'] as const).map(value => <button key={value} className={mode === value ? 'selected' : ''} aria-pressed={mode === value} onClick={() => { setMode(value); if (!durationEdited.current) setDuration(value === 'practice' ? '20' : '60'); }}>{value === 'practice' ? <BookOpen size={22} /> : <Clock3 size={22} />}<strong>{value === 'practice' ? 'Practice' : 'Exam'}</strong>{mode === value && <Check size={19} />}</button>)}</div></section>
-        <section className="setup-section" aria-label="Subjects"><div className="section-title"><h2>Subjects</h2><div className="selection-actions"><button className="text-button" onClick={() => setSubjects(subjects)}>Select all</button><button className="text-button" onClick={() => setSubjects([])}>Clear</button></div></div>
-          {subjects.length > 8 && <input className="subject-search" aria-label="Find a subject" placeholder="Find a subject" value={subjectSearch} onChange={event => setSubjectSearch(event.target.value)} />}
-          <div className={`selection-list ${bundle.kind === 'utme-bank' ? 'utme-subjects' : ''}`}>{subjects.filter(subject => subject.toLowerCase().includes(subjectSearch.trim().toLowerCase())).map(subject => <label key={subject} className={`selection-row ${selectedSubjects.includes(subject) ? 'selected' : ''}`}><input type="checkbox" aria-label={subject} checked={selectedSubjects.includes(subject)} onChange={() => toggle(subject, selectedSubjects, setSubjects)} /><span>{subject}</span><small>{subjectCounts[subject]}</small></label>)}</div>
-        </section>
-        {years.length > 0 && <section className="setup-section" aria-label="Years"><div className="section-title"><h2>Years</h2><label className="compact-check"><input type="checkbox" checked={allYears} onChange={event => { setAllYears(event.target.checked); setYears([]); }} />All years</label></div><div className="year-options">{years.map(year => <label key={year}><input type="checkbox" aria-label={year} checked={!allYears && selectedYears.includes(year)} onChange={() => { if (allYears) { setAllYears(false); setYears([year]); } else toggle(year, selectedYears, setYears); }} /><span>{year}</span><small>{yearCounts[year] || 0}</small></label>)}</div></section>}
-        {topics.length > 0 && <details className="setup-section setup-topic-settings"><summary>Topics <span>{allTopics ? 'All topics' : `${selectedTopics.length} selected`}</span></summary><label className="compact-check"><input type="checkbox" checked={allTopics} onChange={event => { setAllTopics(event.target.checked); setTopics([]); }} />All topics</label><div className="selection-list topic-selection">{topics.map(topic => <label key={topic} className={`selection-row ${!allTopics && selectedTopics.includes(topic) ? 'selected' : ''}`}><input type="checkbox" checked={!allTopics && selectedTopics.includes(topic)} onChange={() => { if (allTopics) { setAllTopics(false); setTopics([topic]); } else toggle(topic, selectedTopics, setTopics); }} /><span>{topic}</span><small>{topicCounts[topic] || 0}</small></label>)}</div></details>}
-        <section className="setup-section"><div className="section-title"><h2>Session settings</h2></div><div className="setting-inputs"><label>Questions<select aria-label="Questions" value={limit} onChange={event => setLimit(event.target.value)}><option value="all">All available ({filtered.length})</option>{[10, 20, 30, 50].map(n => <option key={n} value={n}>{n} questions</option>)}</select></label><label htmlFor="session-time">Time limit<div className={`duration-input ${durationSeconds === null ? 'invalid' : ''}`}><Clock3 size={17} /><input id="session-time" aria-label="Time limit in minutes" type="number" inputMode="decimal" min="0" step="any" value={duration} onChange={event => { durationEdited.current = true; setDuration(event.target.value); }} aria-invalid={durationSeconds === null} /><span>min</span></div></label></div>{durationSeconds === null && <p className="selection-error" role="alert">Enter a time greater than zero.</p>}<label className="shuffle-setting"><span>Shuffle questions</span><input type="checkbox" checked={shuffle} onChange={event => setShuffle(event.target.checked)} /></label></section>
-      </div><aside className="setup-summary"><div className="setup-scholar"><ScholarMascot state="thinking" compact /></div><h2 aria-live="polite">{count}<span> {count === 1 ? 'question' : 'questions'}</span></h2><div className="summary-line"><span>Mode</span><strong>{mode === 'full' ? 'Exam' : 'Practice'}</strong></div><div className="summary-line"><span>Time</span><strong>{timeLabel}</strong></div><div className="summary-line"><span>Subjects</span><strong>{selectedSubjects.length}</strong></div><div className="summary-line"><span>Years</span><strong>{yearLabel}</strong></div><div className="summary-line"><span>Topics</span><strong>{topicLabel}</strong></div><div className="desktop-start">{start}</div>{!count && <p className="selection-error" role="status">{empty}</p>}{error && <p role="alert" className="selection-error">{error}</p>}</aside></div>
-    </div><footer className="setup-mobile-footer"><div aria-live="polite"><strong>{count} {count === 1 ? 'question' : 'questions'}</strong><span>{timeLabel} · {mode === 'full' ? 'Exam' : 'Practice'} · {allYears ? 'All years' : `${selectedYears.length} selected`}</span></div>{start}</footer>
+  async function begin() {
+    if (!ready || starting.current || durationSeconds === null) return;
+    starting.current = true; setBusy(true); setError('');
+    try {
+      const questions = buildSubjectSession(selected, bySubject, settings, shuffle);
+      if (!questions.length) throw new Error('Empty selection');
+      await onProceed({ questions, durationSeconds, mode, subjects: selected, years: [...new Set(selected.filter(subject => settings[subject].studyBy === 'paper').map(subject => settings[subject].year))], topics: selected.flatMap(subject => settings[subject].topics || []) });
+    } catch { setError('Could not start this session. Please try again.'); starting.current = false; setBusy(false); }
+  }
+  const currentSettings = editing ? settings[editing] : null;
+  const currentQuestions = editing ? bySubject[editing] || [] : [];
+  const years = useMemo(() => subjectYears(currentQuestions), [currentQuestions]);
+  const papers = currentSettings ? subjectPapers(currentQuestions, currentSettings.year) : [];
+  const topicPool = currentSettings ? subjectPool(currentQuestions, { ...currentSettings, topics: null }) : [];
+  const topics = getAvailableTopics(topicPool);
+  if (topicPool.some(question => !question.topic && !question.section)) topics.push('Unsectioned');
+
+  return <main className="study-app session-builder" aria-busy={busy}>
+    <header className="study-topbar builder-topbar"><button className="icon-button" aria-label={editing ? 'Back to session setup' : step === 'subjects' ? 'Back to library' : 'Previous setup step'} onClick={back}><ArrowLeft size={20} /></button><span className="builder-context"><strong>{environment.name}</strong>{subtitle && <small>{subtitle}</small>}</span><span className="wordmark">past<span>q</span></span></header>
+    <nav className="builder-steps" aria-label="Session setup">{steps.map((value, index) => <button key={value} aria-label={stepNames[value]} aria-current={!editing && step === value ? 'step' : undefined} disabled={value !== 'subjects' && !selected.length} onClick={() => { setEditing(null); setStep(value); }}><span aria-hidden="true">{!editing && step === value ? index + 1 : steps.indexOf(step) > index ? <Check size={13} /> : index + 1}</span>{stepNames[value]}</button>)}</nav>
+    <div className="builder-scroll" ref={scroll}>
+      <div className="builder-content">
+        {editing && currentSettings ? <section className="subject-editor" aria-label={`Settings for ${editing}`}>
+          <div className="builder-heading"><h1>{editing}</h1><span>{counts[editing]} questions</span></div>
+          {years.length > 0 && currentQuestions.some(question => !calendarYear(question)) && <label className="builder-field"><span>Study by</span><select aria-label={`Study by for ${editing}`} value={currentSettings.studyBy} onChange={event => update(editing, { studyBy: event.target.value as 'paper' | 'topic', topics: null })}><option value="paper">Past paper</option><option value="topic">Topic practice</option></select></label>}
+          {currentSettings.studyBy === 'paper' && years.length > 0 && <>
+            <label className="builder-field"><span>Year</span><select aria-label={`Year for ${editing}`} value={currentSettings.year} onChange={event => { const year = event.target.value, available = subjectPapers(currentQuestions, year); update(editing, { year, paper: available.includes(year) ? year : available[0] || '', topics: null }); }}>{years.map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+            {papers.length > 1 && <label className="builder-field"><span>Paper</span><select aria-label={`Paper for ${editing}`} value={currentSettings.paper} onChange={event => update(editing, { paper: event.target.value, topics: null })}>{papers.map(paper => <option key={paper} value={paper}>{paper}</option>)}</select></label>}
+          </>}
+          {topics.length > 0 && <button className="builder-field field-button" onClick={() => setTopicPicker(true)}><span>{currentSettings.studyBy === 'topic' ? 'Topics / sections' : 'Topics'}</span><strong>{currentSettings.topics === null ? 'All' : `${currentSettings.topics.length} selected`}</strong><ChevronRight size={18} /></button>}
+          <label className="builder-field"><span>Questions</span><select aria-label={`Questions for ${editing}`} value={currentSettings.count} onChange={event => update(editing, { count: event.target.value })}>{[10, 20, 30, 40, 50, 60, ...(!['10','20','30','40','50','60','all'].includes(currentSettings.count) ? [Number(currentSettings.count)] : [])].map(value => <option key={value} value={value}>{value}</option>)}<option value="all">All available ({subjectPool(currentQuestions, currentSettings).length})</option></select></label>
+          {counts[editing] === 0 && <p className="selection-error" role="status">No questions selected. Choose a topic or another paper.</p>}
+          <div className="subject-editor-foot"><BookOpen size={18} /><span>{subjectPool(currentQuestions, currentSettings).length.toLocaleString()} available in this selection</span></div>
+        </section> : step === 'subjects' ? <section aria-label="Selected subjects">
+          <div className="builder-heading"><h1>Your subjects.</h1><button className="text-button" onClick={() => { setSearch(''); setPicker(true); }}><Plus size={17} />{selected.length ? 'Change' : 'Choose subjects'}</button></div>
+          {selected.length ? <div className="builder-subjects">{selected.map((subject, index) => <div className="builder-subject" key={subject}><span className="subject-order">{String(index + 1).padStart(2, '0')}</span><button className="subject-edit-link" aria-label={`Edit ${subject}`} onClick={() => setEditing(subject)}><strong>{subject}</strong><small>{description(subject)}</small></button><button className="icon-button" aria-label={`Edit ${subject} settings`} onClick={() => setEditing(subject)}><Pencil size={17} /></button><button className="icon-button" aria-label={`Remove ${subject}`} onClick={() => toggleSubject(subject)}><X size={16} /></button></div>)}</div> : <div className="builder-empty"><ScholarMascot state="thinking" compact /><p>What are we practising?</p><button className="study-primary" onClick={() => { setSearch(''); setPicker(true); }}>Choose subjects<Plus size={17} /></button></div>}
+        </section> : step === 'settings' ? <section aria-label="Session settings">
+          <div className="builder-heading"><h1>Your pace.</h1></div>
+          <div className="mode-choices">{(['practice', 'full'] as const).map(value => <button key={value} aria-pressed={mode === value} className={mode === value ? 'selected' : ''} onClick={() => { setMode(value); if (!durationEdited.current) setDuration(value === 'practice' ? '20' : '60'); }}>{value === 'practice' ? <BookOpen size={22} /> : <Clock3 size={22} />}<strong>{value === 'practice' ? 'Practice' : 'Exam'}</strong>{mode === value && <Check size={18} />}</button>)}</div>
+          <label className="builder-field"><span>Time limit</span><div className="duration-input"><Clock3 size={17} /><input aria-label="Time limit in minutes" type="number" inputMode="decimal" min="0" step="any" value={duration} onChange={event => { durationEdited.current = true; setDuration(event.target.value); }} aria-invalid={durationSeconds === null} /><span>min</span></div></label>
+          {durationSeconds === null && <p className="selection-error" role="alert">Enter a time greater than zero.</p>}
+          <label className="builder-field"><span>Shuffle within each subject</span><input type="checkbox" checked={shuffle} onChange={event => setShuffle(event.target.checked)} /></label>
+        </section> : <section aria-label="Review session">
+          <div className="builder-heading"><h1>Ready when you are.</h1></div>
+          <div className="builder-review-total"><strong>{count.toLocaleString()}</strong><span>questions · {duration} min · {mode === 'full' ? 'Exam' : 'Practice'}</span></div>
+          <div className="builder-review-list">{selected.map(subject => <button key={subject} aria-label={`Revise ${subject}`} onClick={() => setEditing(subject)}><span><strong>{subject}</strong><small>{description(subject)}</small></span><Pencil size={17} /></button>)}</div>
+          <button className="text-button" onClick={() => setStep('settings')}>Change session settings<ChevronRight size={16} /></button>
+        </section>}
+        {error && <p className="selection-error" role="alert">{error}</p>}
+        {!editing && invalidSubject && <p className="selection-error" role="status">Choose questions for {invalidSubject}.</p>}
+      </div>
+    </div>
+    <footer className="builder-footer"><div><strong>{count.toLocaleString()} questions</strong><small>{selected.length} {selected.length === 1 ? 'subject' : 'subjects'}</small></div>{editing ? <button className="study-primary" onClick={() => setEditing(null)}>Done<Check size={17} /></button> : <button className="study-primary" disabled={busy || (step === 'review' ? !ready : !selected.length || step === 'settings' && durationSeconds === null)} onClick={() => step === 'review' ? void begin() : setStep(steps[steps.indexOf(step) + 1])}>{busy ? 'Preparing…' : step === 'review' ? 'Start session' : 'Continue'}<ArrowRight size={18} /></button>}</footer>
+    {picker && <StudyDialog title="Choose subjects" onClose={() => setPicker(false)} className="builder-picker"><label className="builder-search"><Search size={18} /><input aria-label="Find a subject" placeholder="Find a subject" value={search} onChange={event => setSearch(event.target.value)} /></label><div className="builder-picker-options">{subjects.filter(subject => subject.toLowerCase().includes(search.trim().toLowerCase())).map(subject => <label className="selection-row" key={subject}><input type="checkbox" aria-label={subject} checked={selected.includes(subject)} disabled={!bySubject[subject]?.length} onChange={() => toggleSubject(subject)} /><span>{subject}</span><small>{bySubject[subject]?.length.toLocaleString() || 0}</small></label>)}{!subjects.some(subject => subject.toLowerCase().includes(search.trim().toLowerCase())) && <p>No matching subjects.</p>}</div><button className="study-primary" onClick={() => setPicker(false)}>Done{selected.length > 0 && ` · ${selected.length}`}<Check size={17} /></button></StudyDialog>}
+    {topicPicker && editing && currentSettings && <StudyDialog title={`${editing} topics`} onClose={() => setTopicPicker(false)} className="builder-picker"><label className="selection-row"><input type="checkbox" checked={currentSettings.topics === null} onChange={event => update(editing, { topics: event.target.checked ? null : [] })} /><span>All topics</span></label><div className="builder-picker-options">{topics.map(topic => <label className="selection-row" key={topic}><input type="checkbox" checked={currentSettings.topics === null || currentSettings.topics.includes(topic)} onChange={event => { const values = currentSettings.topics === null ? [...topics] : currentSettings.topics; update(editing, { topics: event.target.checked ? [...values, topic] : values.filter(value => value !== topic) }); }} /><span>{topic}</span></label>)}</div><button className="study-primary" onClick={() => setTopicPicker(false)}>Done<Check size={17} /></button></StudyDialog>}
   </main>;
 }

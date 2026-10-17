@@ -27,6 +27,8 @@ import { listenToAuth } from "../services/auth";
 import { getUserHistory, savePracticeResult, getUserProfile, createUserProfile, updateUserProfile } from "../services/db";
 import { getOfflineLibrary, getGlobalLibrary, getGlobalCatalog, downloadBundle, saveBundle, getOfflineBundle, getBundleFromApi, type LibraryCatalog, type CatalogManufacturer, type CatalogExamType, type CatalogUniversity } from "../services/libraryService";
 import { StudyLibrary, StudyProgress } from "./components/library/StudyLibrary";
+import PreparationLibrary from './components/library/PreparationLibrary';
+import { environmentFor, readPreparation, savePreparation, type Preparation } from '../services/preparation';
 import { StudyWorkspace, StudyResults } from "./components/cbt/StudyWorkspace";
 import { answerIndex } from "../utils/examSession";
 import { readTheme, followTheme, THEME_STORAGE_KEY, type StudyTheme } from "../utils/theme";
@@ -225,6 +227,8 @@ function HomeScreen({
   onOpenBundle,
   onDownloadBundle,
   onSelectManufacturer,
+  preparation,
+  onPreparation,
 }: {
   nav: (s: Screen) => void;
   tab: NavTab;
@@ -241,15 +245,23 @@ function HomeScreen({
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
+  preparation: Preparation;
+  onPreparation: (value: Preparation) => void;
 }) {
+  const focusedMaterials = preparation.enabled ? offlineLibrary.filter(material => environmentFor(material).id === preparation.activeEnvironment) : [];
+  const studyMaterials = focusedMaterials.length ? focusedMaterials : offlineLibrary;
+  const focusedIds = new Set(focusedMaterials.map(material => material.id));
+  const studySessions = focusedMaterials.length ? sessions.filter(session => focusedIds.has(session.source_bundle_id)) : sessions;
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && <StudyHome name={userName} materials={offlineLibrary} sessions={sessions} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
+        {tab === "home" && <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />}
         {tab === "library" && (
-          <StudyLibrary
+          <PreparationLibrary
             key={reminderSearch}
             initialSearch={reminderSearch}
+            preparation={preparation}
+            onPreparation={onPreparation}
             globalLibrary={globalLibrary}
             offlineLibrary={offlineLibrary}
             catalog={libraryCatalog}
@@ -762,6 +774,7 @@ function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; su
 // ── Main App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [preparation, setPreparation] = useState<Preparation>({ enabled: false, activeEnvironment: null });
   const [theme, setTheme] = useState<StudyTheme>(readTheme);
   useEffect(() => followTheme(theme), [theme]);
   useEffect(() => {
@@ -797,6 +810,10 @@ export default function App() {
   const pendingReminder = useRef<{ subject: string } | null>(null);
   const [undergraduate, setUndergraduate] = useState<boolean | null>(null);
   const authenticatedUser = useRef<string | null>(null);
+  function changePreparation(value: Preparation) {
+    setPreparation(value);
+    savePreparation(authenticatedUser.current || '', value);
+  }
   const [sessions, setSessions] = useState<any[]>([]);
   const [offlineLibrary, setOfflineLibrary] = useState<any[]>([]);
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
@@ -873,6 +890,7 @@ export default function App() {
         university: bundle.organization?.name || bundle.university || uni.name,
         manufacturer: bundle.publisher || bundle.manufacturer || mfg.name,
       });
+      if (preparation.enabled) changePreparation({ ...preparation, activeEnvironment: environmentFor(bundle).id });
       setScreen("customize-cbt");
     } catch (e) {
       console.error(e);
@@ -955,6 +973,7 @@ export default function App() {
         return;
       }
       setCustomizeBundle({ ...fresh, questions: qs });
+      if (preparation.enabled) changePreparation({ ...preparation, activeEnvironment: environmentFor(fresh).id });
       setScreen("customize-cbt");
       if (navigator.onLine && !fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
         // Background revalidation: offline copy may predate server additions.
@@ -1014,6 +1033,7 @@ export default function App() {
         setUserEmail(user.email || "");
         setUserAvatar(user.user_metadata?.avatar_url || "");
         setUserId(user.id);
+        if (previousUser !== user.id) setPreparation(readPreparation(user.id));
         void refreshOfflineLibrary().catch(() => {});
         // Read device outcomes before any network-dependent profile/history work.
         void readPracticeHistory(user.id).then(local => { if (active && authenticatedUser.current === user.id) setSessions(previous => mergePracticeHistory(previous, local)); }).catch(() => {});
@@ -1062,6 +1082,7 @@ export default function App() {
         setUserEmail("");
         setUserAvatar("");
         setUserId("");
+        setPreparation({ enabled: false, activeEnvironment: null });
         setUndergraduate(null);
         setScreen(prev => prev === "onboarding" ? "login" : prev);
       }
@@ -1191,6 +1212,8 @@ export default function App() {
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
           onSelectManufacturer={handleSelectManufacturer}
+          preparation={preparation}
+          onPreparation={changePreparation}
         />
       );
       case "snap": return <SnapScreen nav={nav} draft={uploadDraft} onDraftChange={setUploadDraft} onSessionStarted={(id) => setVisionSessionId(id)} />;
@@ -1231,6 +1254,7 @@ export default function App() {
         <CustomizeCbtScreen
           key={String(customizeBundle.id || "bundle")}
           bundle={customizeBundle}
+          ownerId={userId}
           onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
             setPracticeMode(mode === "practice");
@@ -1298,7 +1322,7 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "preference": return <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
       case "practice-history": return <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
