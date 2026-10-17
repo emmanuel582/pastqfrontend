@@ -1,6 +1,7 @@
 /** Render original question formatting with a strict DOM allowlist.
  * Original images are embedded raster data, so saved material works offline.
- * Never inserts source HTML, event handlers, links, SVG, or arbitrary CSS.
+ * Only allowlisted nodes enter the page. Parsing stays in an inert template
+ * so discarded external resources cannot load before sanitization.
  */
 const tags = new Set('div span p br strong b em i u s sub sup hr table thead tbody tfoot tr td th caption ul ol li blockquote img math semantics mrow mfrac mn msup mi mo msub msqrt mroot mover munder munderover mtable mtr mtd mtext msubsup mspace menclose mfenced annotation'.split(' '));
 const blocked = new Set('script style iframe object embed template svg link meta base form input button audio video'.split(' '));
@@ -8,7 +9,8 @@ const styles = new Set('display position width max-width border-collapse border 
 const mathTags = new Set('math semantics mrow mfrac mn msup mi mo msub msqrt mroot mover munder munderover mtable mtr mtd mtext msubsup mspace menclose mfenced annotation'.split(' '));
 
 export function sourceHtmlFragment(html: string): DocumentFragment {
-  const source = new DOMParser().parseFromString(html, 'text/html');
+  const source = document.createElement('template');
+  source.innerHTML = html;
   const fragment = document.createDocumentFragment();
   function append(node: Node, parent: Node) {
     if (node.nodeType === Node.TEXT_NODE) { parent.appendChild(document.createTextNode(node.textContent || '')); return; }
@@ -46,6 +48,6 @@ export function sourceHtmlFragment(html: string): DocumentFragment {
     for (const child of element.childNodes) append(child, copy);
     parent.appendChild(copy);
   }
-  for (const node of source.body.childNodes) append(node, fragment);
+  for (const node of source.content.childNodes) append(node, fragment);
   return fragment;
 }
