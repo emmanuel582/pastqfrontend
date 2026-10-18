@@ -9,6 +9,7 @@ import ProcessingScreen from "./components/ProcessingScreen";
 import ScholarMascot from "./components/ScholarMascot";
 import ContentSkeleton from "./components/ContentSkeleton";
 import AppWelcome from "./components/AppWelcome";
+import NotificationsScreen from "./components/preferences/NotificationsScreen";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
 import { readPracticeHistory, rememberPractice, cachePracticeHistory, syncPracticeHistory, mergePracticeHistory, type PracticeSummary } from "../services/practiceHistory";
@@ -804,6 +805,7 @@ export default function App() {
   const [userId, setUserId] = useState("");
   const [reminderSearch, setReminderSearch] = useState('');
   const [reminderIntentVersion, setReminderIntentVersion] = useState(0);
+  const pendingInbox = useRef(new URL(window.location.href).searchParams.get('inbox') === '1');
   const pendingReminder = useRef<{ subject: string } | null>(null);
   const [undergraduate, setUndergraduate] = useState<boolean | null>(null);
   const authenticatedUser = useRef<string | null>(null);
@@ -830,7 +832,13 @@ export default function App() {
     function acceptReminder(value: string) {
       try {
         const url = new URL(value, window.location.origin);
-        if (url.origin !== window.location.origin || url.searchParams.get('reminder') !== 'study') return;
+        if (url.origin !== window.location.origin) return;
+        if (url.searchParams.get('inbox') === '1') {
+          pendingInbox.current = true; setReminderIntentVersion(value => value + 1);
+          setScreen(current => ['home','preference','settings-reminders','settings-preferences','settings-notifications'].includes(current) ? 'settings-notifications' : current);
+          return;
+        }
+        if (url.searchParams.get('reminder') !== 'study') return;
         pendingReminder.current = { subject: (url.searchParams.get('subject') || '').slice(0, 100) };
         setReminderIntentVersion(value => value + 1);
         // A notification never interrupts a timed exam or bypasses onboarding.
@@ -849,6 +857,13 @@ export default function App() {
     const url = new URL(window.location.href); url.searchParams.delete('reminder'); url.searchParams.delete('subject');
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
   }, [userId, screen, reminderSearch, reminderIntentVersion]);
+
+  useEffect(() => {
+    if (!userId || !pendingInbox.current || !['home','preference','settings-notifications'].includes(screen)) return;
+    pendingInbox.current = false; setScreen('settings-notifications');
+    const url = new URL(window.location.href); url.searchParams.delete('inbox');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, [userId, screen, reminderIntentVersion]);
 
   const refreshGlobalLibrary = async () => {
     setLibraryStatus("loading");
@@ -1351,12 +1366,18 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onNotifications={() => nav("settings-notifications")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
       case "practice-history": return !historyReady ? <ContentSkeleton kind="history" label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
-      case "settings-notifications": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
+      case "settings-notifications": return <NotificationsScreen key={userId} ownerId={userId} onBack={() => nav("preference")} onOpen={path => {
+        const url = new URL(path, window.location.origin);
+        if (url.origin !== window.location.origin) return;
+        if (url.pathname === '/history') nav('practice-history');
+        else if (url.pathname === '/profile') nav('preference');
+        else { if (url.pathname === '/library' || url.searchParams.get('reminder') === 'study') { setNavTab('library'); setReminderSearch(url.searchParams.get('subject') || ''); } else setNavTab('home'); setScreen('home'); }
+      }} />;
       case "about": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
       case "support": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
       default: return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="home" />;

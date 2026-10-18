@@ -19,6 +19,11 @@ async function request<T>(path = '', method = 'GET', body?: unknown, ownerId?: s
   } finally { clearTimeout(timer); }
 }
 export const getReminders = (ownerId?: string) => request<ReminderSnapshot>('', 'GET', undefined, ownerId);
+export type InboxItem = { id: string; title: string; body: string; imageId: string | null; deepLink: string; sent_at: string; read_at: string | null };
+export type InboxSnapshot = { items: InboxItem[]; total: number; unread: number };
+export const getNotificationInbox = (offset = 0, ownerId?: string) => request<InboxSnapshot>(`/inbox?offset=${offset}`, 'GET', undefined, ownerId);
+export const readNotification = (id: string, ownerId?: string) => request(`/inbox/${encodeURIComponent(id)}/read`, 'POST', {}, ownerId);
+export const notificationImage = (id: string) => apiUrl(`/api/reminders/images/${encodeURIComponent(id)}`);
 export const saveReminders = (settings: ReminderSettings, ownerId?: string) => request<ReminderSnapshot>('', 'PUT', settings, ownerId);
 export function historyForReminders(sessions: any[]) {
   return sessions.flatMap(session => {
