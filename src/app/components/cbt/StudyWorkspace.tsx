@@ -1,5 +1,6 @@
 import ScholarMascot from '../ScholarMascot';
 import TheoryAnswer from './TheoryAnswer';
+import AnswerFeedback from './AnswerFeedback';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import Dialog from '../StudyDialog';
 import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Flag, Grid2X2, X, Calculator, PenLine, Grip, Maximize2, Eraser, Undo2, Trash2, Minus, Plus, BookOpen, RotateCcw, Bookmark } from 'lucide-react';
@@ -19,15 +20,6 @@ export interface StudyQuestion {
 }
 type Destination = 'home' | 'results' | 'exam' | 'review-answers';
 const time = (seconds: number) => `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-
-function Feedback({ question, assets }: { question: StudyQuestion; assets?: SourceAssets }) {
-  const written = question.type === 'short_answer';
-  if (!question.explanation && !written) return null;
-  return <section className="answer-feedback" aria-label="Answer explanation">
-    {written && <div className="source-answer"><strong>Source answer</strong><MathText text={question.answerText || ''} html={question.optionsHtml?.[0]} assets={assets} /></div>}
-    {question.explanation && <div className="feedback-explanation"><MathText text={question.explanation} html={question.explanationHtml} assets={assets} /></div>}
-  </section>;
-}
 
 function FloatingCalculator({ onClose, hidden }: { onClose: () => void; hidden: boolean }) {
   const [rect, setRect] = useState<ToolRect>(() => fitTool({ x: window.innerWidth - 360, y: 100, width: 324, height: 560 }, { width: window.innerWidth, height: window.innerHeight }));
@@ -199,7 +191,7 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
       <div className="question-stem" role="heading" aria-level={1}><MathText text={question.question} html={question.questionHtml} assets={assets} zoomImages /></div>
       {question.type === 'short_answer' && <div className="written-answer"><label htmlFor="written-response">Your answer</label><textarea id="written-response" value={writtenAnswers[currentQ] || ''} readOnly={review} placeholder="Type your answer" onChange={event => onWrittenAnswer?.(currentQ, event.target.value)} /></div>}
       {question.type !== 'short_answer' && question.type !== 'theory' && <div className="answer-options" role="group" aria-label="Answer choices">{question.options.map((option, i) => <button key={i} disabled={reveal} aria-pressed={selected === i} className={`answer-option ${selected === i ? 'selected' : ''} ${reveal && key === i ? 'correct-answer' : ''} ${reveal && selected === i && key !== null && key !== i ? 'incorrect-answer' : ''}`} onClick={() => onAnswer(currentQ, i)}><span className="answer-letter">{String.fromCharCode(65 + i)}</span><span className="answer-word"><MathText text={option} html={question.optionsHtml?.[i]} assets={assets} /></span>{reveal && key === i ? <Check size={19} /> : reveal && selected === i && key !== null ? <X size={18} /> : selected === i ? <span className="selection-mark" /> : null}{reveal && <span className="answer-state">{selected === i ? 'Your answer' : ''}</span>}</button>)}</div>}
-      {question.type === 'theory' && <TheoryAnswer question={question} assets={assets} revealed={review || selected !== null} onReveal={() => onAnswer(currentQ, 0)} />}{reveal && question.type !== 'theory' && <Feedback question={question} assets={assets} />}
+      {question.type === 'theory' && <TheoryAnswer question={question} assets={assets} revealed={review || selected !== null} onReveal={() => onAnswer(currentQ, 0)} />}{reveal && question.type !== 'theory' && <AnswerFeedback question={question} assets={assets} />}
       </article></div><footer className="exam-footer"><button className="study-secondary" aria-label="Previous" disabled={subjectNumber === 1} onClick={() => goInSubject(subjectNumber - 2)}><ArrowLeft size={18} /><span>Previous</span></button><button className="mobile-question-jump" aria-label="Open question navigator" onClick={() => setNavigator(true)}><Grid2X2 size={18} />{subjectNumber}/{subjectTotal}</button><button className="study-primary" onClick={advance}>{subjectNumber < subjectTotal ? 'Next' : followingSubject ? 'Next subject' : review ? 'Complete' : 'Finish exam'}<ArrowRight size={18} /></button></footer></div>
       {board && <><div className="board-divider" role="separator" aria-label="Resize working paper" aria-orientation={window.innerWidth <= 760 ? "horizontal" : "vertical"} aria-valuenow={window.innerWidth <= 760 ? boardHeight : boardWidth} aria-valuemin={window.innerWidth <= 760 ? 150 : 280} aria-valuemax={window.innerWidth <= 760 ? Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300)) : window.innerWidth * .5} tabIndex={0} onPointerDown={e => { const mobile = window.matchMedia('(max-width: 760px)').matches; divider.current = { start: mobile ? e.clientY : e.clientX, dimension: mobile ? boardHeight : boardWidth, mobile }; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={e => { const d = divider.current; if (!d) return; if (d.mobile) setBoardHeight(Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300, d.dimension + d.start - e.clientY))); else setBoardWidth(Math.max(280, Math.min(window.innerWidth * .5, d.dimension + d.start - e.clientX))); }} onPointerUp={() => { divider.current = null; }} onPointerCancel={() => { divider.current = null; }} onKeyDown={e => { if (!e.key.startsWith('Arrow')) return; e.preventDefault(); if (window.innerWidth <= 760) setBoardHeight(v => Math.max(150, Math.min(window.innerHeight * .55, window.innerHeight - 300, v + (e.key === 'ArrowUp' ? 20 : -20)))); else setBoardWidth(v => Math.max(280, Math.min(window.innerWidth * .5, v + (e.key === 'ArrowLeft' ? 20 : -20)))); }}><span /></div></>}<DrawingBoard question={currentQ} onClose={() => setBoard(false)} hidden={!board} />
     </div>

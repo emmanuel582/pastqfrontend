@@ -425,3 +425,7 @@ button.material-row:hover { color: var(--study-accent); }
 .category-filter { flex-shrink:0; min-height:44px; border:1px solid var(--study-line); border-radius:8px; padding:10px 16px; background:transparent; color:var(--study-muted); font-size:13px; }
 .category-filter[aria-pressed="true"] { background:var(--study-control); color:var(--study-ink); font-weight:650; }
 .catalog-heading { justify-content:flex-end; }
+
+.answer-topic { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; margin-bottom:14px; font-size:12px; }
+.answer-topic>span { color:var(--study-muted); }
+.answer-topic>strong { font-weight:650; color:var(--study-ink); overflow-wrap:anywhere; }

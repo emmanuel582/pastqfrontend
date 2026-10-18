@@ -31,6 +31,18 @@ describe('durable private practice on this device', () => {
     expect(saved.attempt).toMatchObject(progress);
     expect(saved.attempt.deadline).toBe(attempt.deadline);
   });
+  it('keeps distinct answer and explanation diagrams and topic in offline attempts and bookmarks', async () => {
+    const source = input(), answer = 'c'.repeat(64), explanation = 'd'.repeat(64);
+    Object.assign(source.questions[0], { topic: 'Cell structure', answerHtml: `<img src="pastq-asset:${answer}">`, explanationHtml: `<img src="pastq-asset:${explanation}">` });
+    Object.assign(source.assets, { [answer]: {mime:'image/png',data:'Aw=='}, [explanation]:{mime:'image/png',data:'BA=='} });
+    const attempt = await createAttempt('ada', source);
+    const saved = await readAttempt('ada', attempt.id);
+    expect(Object.keys(saved.paper.assets).sort()).toEqual([sha, answer, explanation].sort());
+    expect(saved.paper.questions[0].topic).toBe('Cell structure');
+    const bookmark = await saveBookmark('ada', {title:source.title,source:source.source,question:source.questions[0],assets:source.assets,answer:0});
+    expect(Object.keys(bookmark.assets).sort()).toEqual([sha, answer, explanation].sort());
+    expect(bookmark.question.topic).toBe('Cell structure');
+  });
   it('isolates accounts and refuses unauthenticated saves', async () => {
     const attempt = await createAttempt('ada', input());
     expect(await listAttempts('ben')).toEqual([]);
