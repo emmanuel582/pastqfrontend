@@ -15,7 +15,7 @@ function Rows({ kind = 'materials' }: { kind?: 'materials' | 'sessions' | 'histo
   </div>)}</div>;
 }
 function FirstStep({ profile = false }: { profile?: boolean }) {
-  return <div className={profile ? 'student-first-progress' : 'home-first'}><Block width={profile ? 170 : 180} height={profile ? 180 : 190} className="skeleton-character" /><Block width={220} height={profile ? 30 : 70} /><Block width={210} height={12} className="skeleton-first-note" /><Block width={170} height={48} className="skeleton-action" />{!profile && <Block width={150} height={16} className="skeleton-first-link" />}</div>;
+  return <div className={profile ? 'student-first-progress' : 'home-first'}><Block width={profile ? 170 : 210} height={profile ? 180 : 220} className={`skeleton-character${profile ? '' : ' skeleton-first-character'}`} /><Block width={220} height={profile ? 30 : 46} className={profile ? '' : 'skeleton-first-title'} /><Block width={170} height={48} className="skeleton-action" />{!profile && <Block width={150} height={16} className="skeleton-first-link" />}</div>;
 }
 function Home({ hasSaved }: { hasSaved: boolean }) {
   return <div className="study-app study-home personal-home"><Topbar /><div className="home-content"><Title />{hasSaved ? <>

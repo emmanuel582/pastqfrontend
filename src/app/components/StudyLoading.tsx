@@ -28,7 +28,7 @@ export default function StudyLoading({ state = 'preparing', name, progress, mess
         <h1 key={state} className="loading-title" role="status" aria-live="polite">{titles[state]}</h1>
         {name && <p className="loading-material" title={name}>{name}</p>}
         {!paused && <div className="loading-progress">
-          <div className="loading-progress-label"><span>{state === 'ready' ? 'Ready to practise' : 'Preparing your material'}</span>{value !== null && <span className="loading-percentage">{Math.floor(value)}<small>%</small></span>}</div>
+          {value !== null && <div className="loading-progress-label"><span className="loading-percentage">{Math.floor(value)}<small>%</small></span></div>}
           <div className={`study-loading-track ${value === null ? 'is-indeterminate' : ''}`} role="progressbar" aria-label="Preparing your material" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value ?? undefined} aria-valuetext={value === null ? 'In progress' : `${Math.floor(value)} percent`}><span style={value === null ? undefined : { width: `${value}%` }} /></div>
         </div>}
         {message && <p className="loading-message" role="status">{message}</p>}

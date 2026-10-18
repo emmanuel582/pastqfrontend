@@ -6,7 +6,7 @@
 .study-loading h1.loading-title { font-family: 'Lora',serif; font-size: clamp(36px,4vw,52px); font-weight: 500; letter-spacing: -.045em; line-height: 1.16; white-space: pre-line; text-wrap: balance; animation: loading-copy-in .35s ease-out both; }
 .loading-material { margin-top: 18px !important; color: var(--study-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .loading-progress { margin-top: 40px; }
-.loading-progress-label { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 12px; color: var(--study-muted); font-size: 12px; }
+.loading-progress-label { display: flex; align-items: baseline; justify-content: flex-end; gap: 14px; margin-bottom: 12px; color: var(--study-muted); font-size: 12px; }
 .loading-percentage { font-size: 20px; line-height: 1; color: var(--study-ink); font-variant-numeric: tabular-nums; }
 .loading-percentage small { font-size: 11px; color: var(--study-muted); margin-left: 3px; }
 .study-loading-track { position: relative; height: 3px; width: 100%; background: var(--study-line); overflow: hidden; }
@@ -70,3 +70,7 @@
   .study-loading-track > span { transition: none; }
   .study-loading-track.is-indeterminate > span { transform: none; margin: auto; opacity: .65; }
 }
+
+.unavailable-content { width:min(100%,480px); margin:auto; padding:32px 24px 80px; text-align:center; }
+.unavailable-content h1 { font:500 clamp(28px,4vw,38px)/1.2 'Outfit','Manrope',sans-serif; letter-spacing:-.035em; }
+.unavailable-content>.study-primary { margin-top:24px; }

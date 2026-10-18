@@ -13,7 +13,6 @@
 .skeleton-action { margin-top:24px; border-radius:6px; }
 .skeleton-character { border-radius:42% 42% 18% 18%; }
 .content-skeleton .skeleton-character { flex-shrink:1; }
-.skeleton-first-note { margin:16px 0 0; }
 .skeleton-first-link { margin-top:30px; }
 .skeleton-stat { margin-top:8px; }
 .skeleton-setting { display:flex; align-items:center; gap:15px; min-height:88px; padding:20px 2px; border-bottom:1px solid var(--study-line); }
@@ -28,6 +27,8 @@
 .skeleton-page .app-welcome-actions>.skeleton-action { margin:0; border-radius:12px; }
 .skeleton-signin { display:grid; place-items:center; height:48px; }
 @media(max-width:767px) {
+  .skeleton-first-character { width:180px !important; height:190px !important; }
+  .skeleton-first-title { height:36.8px !important; }
   .skeleton-catalog .study-art { height:50px !important; }
   .skeleton-catalog .skeleton-track { height:40px !important; }
   .content-skeleton .skeleton-home-character { width:94px !important; height:150px !important; }

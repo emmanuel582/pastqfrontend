@@ -688,7 +688,7 @@ function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }
         <div className="flex items-center gap-3">
           <div>
             <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>Edit Profile</h2>
-            <p className="text-[12px] text-[#8C8681]" style={INTER}>Update your details</p>
+
           </div>
         </div>
       </div>
@@ -758,23 +758,11 @@ function EditProfileScreen({ nav, userName, setUserName, userEmail, userAvatar }
 
 
 
-function PlaceholderScreen({ title, subtitle, nav, backTo }: { title: string; subtitle: string; nav: (s: Screen) => void; backTo: Screen }) {
-  return (
-    <div className="h-full flex flex-col bg-[#FAF6F0]">
-      <div className="px-5 pt-2 flex items-center gap-3 border-b border-[#EADFD3] bg-white py-3">
-        <div>
-          <h2 className="text-[16px] font-bold text-[#2E2A27]" style={JK}>{title}</h2>
-          <p className="text-[12px] text-[#8C8681]" style={INTER}>{subtitle}</p>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center px-6">
-        <div className="w-full max-w-[320px] rounded-[24px] border border-[#EADFD3] bg-white p-6 text-center shadow-sm">
-          <p className="text-[14px] font-semibold text-[#2E2A27]" style={JK}>{title}</p>
-          <p className="mt-2 text-[12px] text-[#8C8681] leading-relaxed" style={INTER}>This screen is ready for your next detail. Add content here when you want to expand the experience.</p>
-        </div>
-      </div>
-    </div>
-  );
+function PlaceholderScreen({ title, nav, backTo }: { title: string; nav: (s: Screen) => void; backTo: Screen }) {
+  return <main className="study-app study-loading">
+    <header className="loading-header"><span className="wordmark">past<span>q</span></span></header>
+    <div className="unavailable-content"><h1>{title}</h1><button className="study-primary" onClick={() => nav(backTo)}>{backTo === 'preference' ? 'Back to Preferences' : 'Back to library'}<ChevronRight size={18} /></button></div>
+  </main>;
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
@@ -1338,7 +1326,7 @@ export default function App() {
             setScreen("exam");
           }}
         />
-      ) : <PlaceholderScreen title="Material unavailable" subtitle="Return to the library and select the material again." nav={nav} backTo="home" />;
+      ) : <PlaceholderScreen title="Material unavailable" nav={nav} backTo="home" />;
       case "exam": return (
         <StudyWorkspace
           questions={activeQuestions}
@@ -1368,10 +1356,10 @@ export default function App() {
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
-      case "settings-notifications": return <PlaceholderScreen title="Notifications" subtitle="Control app alerts" nav={nav} backTo="preference" />;
-      case "about": return <PlaceholderScreen title="Page unavailable" subtitle="Return to Preferences." nav={nav} backTo="preference" />;
-      case "support": return <PlaceholderScreen title="Help & Support" subtitle="Get help anytime" nav={nav} backTo="preference" />;
-      default: return <PlaceholderScreen title="Page unavailable" subtitle="This screen could not be restored safely." nav={nav} backTo="home" />;
+      case "settings-notifications": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
+      case "about": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
+      case "support": return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="preference" />;
+      default: return <PlaceholderScreen title="Page unavailable" nav={nav} backTo="home" />;
     }
   };
 

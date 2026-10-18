@@ -60,7 +60,7 @@ export function AuthScreen({ mode, nav }: Props) {
 
   const firstName = name.trim().split(/\s+/)[0];
   return <AuthShell title={sent ? recovery ? 'Password updated.' : 'Check your inbox.' : recovery ? 'Your new password.' : reset ? 'Forgot password?' : signup ? 'Create account.' : 'Welcome back.'} greeting={signup && !sent ? firstName ? `Hey, ${Array.from(firstName).slice(0, 12).join('')}${Array.from(firstName).length > 12 ? '…' : ''}.` : 'Hey there.' : undefined} mascotState={busy ? 'waiting' : sent ? 'encourage' : 'idle'}>
-        {sent ? <div className="auth-reset-success" role="status"><Check size={28} />{!recovery && <p>{signup ? 'Confirm your email to finish setting up your study room.' : 'If an account exists, a reset link will arrive shortly.'}</p>}<button type="button" className="auth-explore" onClick={() => nav('login')}>Back to sign in</button></div> : <>
+        {sent ? <div className="auth-reset-success" role="status"><Check size={28} />{!recovery && <p>{signup ? 'Confirm your email to continue.' : 'If an account exists, a reset link will arrive shortly.'}</p>}<button type="button" className="auth-explore" onClick={() => nav('login')}>Back to sign in</button></div> : <>
           <form className="auth-form" onSubmit={submit} aria-busy={busy}>
             {signup && <label className="auth-field" htmlFor={`${id}-name`}><span>Full name</span><input id={`${id}-name`} name="name" autoComplete="name" maxLength={120} placeholder="Your full name" value={name} onChange={event => setName(event.target.value)} required disabled={busy} /></label>}
             {!recovery && <label className="auth-field" htmlFor={`${id}-email`}><span>Email address</span><input id={`${id}-email`} name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false} placeholder="you@example.com" value={email} onChange={event => setEmail(event.target.value)} required maxLength={254} disabled={busy} /></label>}
@@ -70,7 +70,7 @@ export function AuthScreen({ mode, nav }: Props) {
             <button type="submit" className="study-primary auth-submit" disabled={busy}>{pending === 'email' ? recovery ? 'Updating…' : reset ? 'Sending link…' : signup ? 'Creating account…' : 'Signing in…' : recovery ? 'Update password' : reset ? 'Send reset link' : signup ? 'Create account' : 'Sign in'}{!busy && <ArrowRight size={17} />}</button>
           </form>
           {!reset && !recovery && <><div className="auth-divider"><span />or<span /></div><button type="button" className="auth-google" onClick={() => void authenticate('google')} disabled={busy}><GoogleMark />{pending === 'google' ? 'Connecting…' : 'Continue with Google'}</button></>}
-          {!reset && !recovery && <p className="auth-switch">{signup ? 'Already have an account?' : 'New to PastQ?'} <button onClick={() => nav(signup ? 'login' : 'signup')} disabled={busy}>{signup ? 'Sign in' : 'Create an account'}</button></p>}
+          {!reset && !recovery && <p className="auth-switch"><button onClick={() => nav(signup ? 'login' : 'signup')} disabled={busy}>{signup ? 'Sign in' : 'Create an account'}</button></p>}
         </>}
   </AuthShell>;
 }

@@ -29,12 +29,12 @@
 .home-first { display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 20px 30px; }
 .home-first>.scholar-scene { --scholar-frame-width:192px; --scholar-frame-height:208px; padding-bottom:12px; width:210px; height:220px; margin-bottom:8px; }
 .home-first h2 { font-family:'Outfit','Manrope',sans-serif; font-size:clamp(28px,4vw,40px); font-weight:500; line-height:1.15; letter-spacing:-.04em; }
-.home-first p { color:var(--study-muted); font-size:13px; margin:16px 0 24px; }
+.home-first>.study-primary,.student-first-progress>.study-primary { margin-top:24px; }
 .home-first>.text-button { margin-top:18px; }
 .student-first-progress { display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 0 26px; }
 .student-first-progress>.scholar-scene { --scholar-frame-width:144px; --scholar-frame-height:156px; padding-bottom:12px; width:170px; height:180px; }
 .student-first-progress h2 { font-family:'Outfit','Manrope',sans-serif; font-size:25px; font-weight:500; letter-spacing:-.04em; }
-.student-first-progress p { color:var(--study-muted); font-size:12px; margin:10px 0 20px; }
+
 .discover-screen .library-intro h1 { font-family:'Outfit','Manrope',sans-serif; font-weight:500; }
 .discover-code-button { font-size:12px; gap:7px; min-height:44px; }
 .discover-filters { flex-wrap:wrap; gap:24px; }
