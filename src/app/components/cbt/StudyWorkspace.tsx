@@ -2,7 +2,7 @@ import ScholarMascot from '../ScholarMascot';
 import TheoryAnswer from './TheoryAnswer';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import Dialog from '../StudyDialog';
-import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Flag, Grid2X2, X, Calculator, PenLine, Grip, Maximize2, Eraser, Undo2, Trash2, Minus, Plus, BookOpen, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Flag, Grid2X2, X, Calculator, PenLine, Grip, Maximize2, Eraser, Undo2, Trash2, Minus, Plus, BookOpen, RotateCcw, Bookmark } from 'lucide-react';
 import MathText from '../MathText';
 import QuestionMedia, { type QuestionFigure } from '../QuestionMedia';
 import type { SourceAssets } from '../../../utils/sourceHtml';
@@ -129,12 +129,12 @@ function DrawingBoard({ question, onClose, hidden }: { question: number; onClose
   </section>;
 }
 
-export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, currentQ, onQ, timeLeft, duration, showModal, onModal, onSubmit, nav, review = false, writtenAnswers = [], onWrittenAnswer, assets }: {
+export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, currentQ, onQ, timeLeft, duration, showModal, onModal, onSubmit, nav, review = false, writtenAnswers = [], onWrittenAnswer, assets, bookmarked = false, onBookmark, bookmarkBusy = false }: {
   questions: StudyQuestion[]; answers: (number | null)[]; onAnswer: (question: number, option: number) => void;
   flagged: boolean[]; onFlag: (question: number) => void; currentQ: number; onQ: (question: number) => void;
   timeLeft: number; duration: number; showModal: boolean; onModal: (open: boolean) => void; onSubmit: () => void;
   nav: (screen: Destination) => void; practice?: boolean; review?: boolean;
-  writtenAnswers?: string[]; onWrittenAnswer?: (question: number, text: string) => void; assets?: SourceAssets;
+  writtenAnswers?: string[]; onWrittenAnswer?: (question: number, text: string) => void; assets?: SourceAssets; bookmarked?: boolean; onBookmark?: () => void; bookmarkBusy?: boolean;
 }) {
   const [navigator, setNavigator] = useState(false);
   const [calculator, setCalculator] = useState(false);
@@ -194,7 +194,7 @@ export function StudyWorkspace({ questions, answers, onAnswer, flagged, onFlag, 
     <div className="session-progress" aria-label={`${question.subject}: ${subjectAnswered} of ${subjectTotal} answered`}><div style={{ width: `${subjectAnswered / subjectTotal * 100}%` }} /></div>
     <div className="exam-body">
       <aside className="exam-rail"><button className="rail-navigator" aria-label="Open question navigator" onClick={() => setNavigator(true)}><Grid2X2 size={21} /><span>{subjectNumber}<small>/{subjectTotal}</small></span><ChevronRight size={15} /></button><div className="rail-line" /><button className={`rail-tool ${calculator ? 'active' : ''}`} aria-label="Open calculator" aria-pressed={calculator} onClick={() => setCalculator(v => !v)}><Calculator size={21} /><span>Calculate</span></button><button className={`rail-tool ${board ? 'active' : ''}`} aria-label="Open drawing board" aria-pressed={board} onClick={() => setBoard(v => !v)}><PenLine size={21} /><span>Work out</span></button></aside>
-      <div className="question-column"><div className="question-scroll" ref={questionScroll}><article className="question-paper"><div className="question-meta"><div className="question-controls"><button className="icon-button" aria-label="Decrease question text" disabled={scale <= .9} onClick={() => setScale(v => Math.max(.9, v - .1))}><Minus size={15} /><span>A</span></button><button className="icon-button" aria-label="Increase question text" disabled={scale >= 1.4} onClick={() => setScale(v => Math.min(1.4, v + .1))}><Plus size={15} /><span>A</span></button>{!review && <button className={`icon-button flag-button ${flagged[currentQ] ? 'active' : ''}`} aria-label={flagged[currentQ] ? 'Unflag question' : 'Flag question'} aria-pressed={flagged[currentQ]} onClick={() => onFlag(currentQ)}><Flag size={18} /></button>}</div></div>
+      <div className="question-column"><div className="question-scroll" ref={questionScroll}><article className="question-paper"><div className="question-meta"><div className="question-controls"><button className="icon-button" aria-label="Decrease question text" disabled={scale <= .9} onClick={() => setScale(v => Math.max(.9, v - .1))}><Minus size={15} /><span>A</span></button><button className="icon-button" aria-label="Increase question text" disabled={scale >= 1.4} onClick={() => setScale(v => Math.min(1.4, v + .1))}><Plus size={15} /><span>A</span></button>{onBookmark && <button className={`icon-button ${bookmarked ? 'active' : ''}`} aria-label={bookmarked ? 'Remove saved question' : 'Save question'} aria-pressed={bookmarked} disabled={bookmarkBusy} onClick={onBookmark}><Bookmark size={18} fill={bookmarked ? 'currentColor' : 'none'} /></button>}{!review && <button className={`icon-button flag-button ${flagged[currentQ] ? 'active' : ''}`} aria-label={flagged[currentQ] ? 'Unflag question' : 'Flag question'} aria-pressed={flagged[currentQ]} onClick={() => onFlag(currentQ)}><Flag size={18} /></button>}</div></div>
       <QuestionMedia passage={question.passage} figures={question.figures} />
       <div className="question-stem" role="heading" aria-level={1}><MathText text={question.question} html={question.questionHtml} assets={assets} zoomImages /></div>
       {question.type === 'short_answer' && <div className="written-answer"><label htmlFor="written-response">Your answer</label><textarea id="written-response" value={writtenAnswers[currentQ] || ''} readOnly={review} placeholder="Type your answer" onChange={event => onWrittenAnswer?.(currentQ, event.target.value)} /></div>}

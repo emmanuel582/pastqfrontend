@@ -13,6 +13,8 @@ import NotificationsScreen from "./components/preferences/NotificationsScreen";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
 import { readPracticeHistory, rememberPractice, cachePracticeHistory, syncPracticeHistory, mergePracticeHistory, type PracticeSummary } from "../services/practiceHistory";
+import { createAttempt, saveCheckpoint, completeAttempt, claimAttempt, readAttempt, listAttempts, listBookmarks, bookmarkKey, saveBookmark, removeBookmark, discardAttempt, attemptSummary, type SavedAttempt, type SavedBookmark } from '../services/practiceArchive';
+import SavedQuestionsScreen from './components/library/SavedQuestionsScreen';
 import StudyHome from "./components/home/StudyHome";
 import DiscoverScreen from "./components/discover/DiscoverScreen";
 import SnapScreen, { type UploadDraft } from "./components/upload/SnapScreen";
@@ -22,7 +24,7 @@ import {
   Flag, Check, X, Eye, RotateCcw, Edit2,
   Bell, LogOut, AlertTriangle, BookOpen,
   ChevronRight, Plus, FileText, Shield, Star, Info, Twitter, Github, Library, Search, Download,
-  Calculator, PenLine, Eraser, Trash2, Undo2, Send, ZoomIn, ZoomOut, ChevronDown, ChevronUp,
+  Bookmark, History, ArrowRight, Calculator, PenLine, Eraser, Trash2, Undo2, Send, ZoomIn, ZoomOut, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { listenToAuth } from "../services/auth";
 
@@ -48,7 +50,7 @@ type Screen =
   | "splash" | "signup" | "login" | "forgot-password" | "change-password" | "onboarding"
   | "home" | "snap" | "processing" | "review-questions" | "customize-cbt"
   | "exam" | "results" | "review-answers" | "preference" | "manual-entry"
-  | "profile-edit" | "practice-history" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
+  | "saved-questions" | "profile-edit" | "practice-history" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
 type NavTab = "home" | "library" | "lead" | "preference";
 
 interface Q {
@@ -233,6 +235,7 @@ function HomeScreen({
   onSelectManufacturer,
   preparation,
   onPreparation,
+  studyTools,
 }: {
   nav: (s: Screen) => void;
   tab: NavTab;
@@ -253,6 +256,7 @@ function HomeScreen({
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
   preparation: Preparation;
   onPreparation: (value: Preparation) => void;
+  studyTools?: React.ReactNode;
 }) {
   const focusedMaterials = preparation.enabled ? offlineLibrary.filter(material => environmentFor(material).id === preparation.activeEnvironment) : [];
   const studyMaterials = focusedMaterials.length ? focusedMaterials : offlineLibrary;
@@ -261,7 +265,7 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" hasSaved={studyMaterials.length > 0} label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />)}
+        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" hasSaved={studyMaterials.length > 0} label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")}>{studyTools}</StudyHome>)}
         {tab === "library" && (
           <PreparationLibrary
             key={reminderSearch}
@@ -822,6 +826,103 @@ export default function App() {
   const [restoringImages, setRestoringImages] = useState(false);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
 
+  const [savedAttempts, setSavedAttempts] = useState<SavedAttempt[]>([]);
+  const [savedQuestions, setSavedQuestions] = useState<SavedBookmark[]>([]);
+  const [archiveReady, setArchiveReady] = useState(false);
+  const [storageError, setStorageError] = useState('');
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
+  const [bookmarkIdentity, setBookmarkIdentity] = useState<{ question: Q; key: string } | null>(null);
+  const [reviewBack, setReviewBack] = useState<'library' | 'history' | 'bookmarks'>('library');
+  const currentAttempt = useRef<SavedAttempt | null>(null);
+  const checkpointRef = useRef({ attemptId: '', progress: { answers, writtenAnswers, flagged, currentQ } });
+  if (screen === 'exam' && currentAttempt.current?.status === 'active') checkpointRef.current = { attemptId: currentAttempt.current.id, progress: { answers, writtenAnswers, flagged, currentQ } };
+  const archivedSummaries = savedAttempts.filter(attempt => attempt.status === 'completed').map(attemptSummary);
+  const archivedIds = new Set(archivedSummaries.map(attempt => attempt.id));
+  const displaySessions = [...archivedSummaries, ...sessions.filter(session => !archivedIds.has(session.id))].sort((a, b) => (b.completed_at || b.created_at || '').localeCompare(a.completed_at || a.created_at || ''));
+  const ongoingAttempt = savedAttempts.find(attempt => attempt.status === 'active');
+  const visibleQuestion = activeQuestions[screen === 'review-answers' ? reviewQ : currentQ];
+  const currentBookmarkKey = bookmarkIdentity && bookmarkIdentity.question === visibleQuestion ? bookmarkIdentity.key : '';
+  const bookmarked = !!currentBookmarkKey && savedQuestions.some(row => row.key === currentBookmarkKey);
+
+  async function refreshArchive(owner: string) {
+    const [attempts, bookmarks] = await Promise.all([listAttempts(owner), listBookmarks(owner)]);
+    if (authenticatedUser.current !== owner) return;
+    setSavedAttempts(attempts); setSavedQuestions(bookmarks);
+    // Recover a completed result if the browser closed between saving its paper
+    // and queuing the lightweight account summary. Never upload question content.
+    const known = new Set((await readPracticeHistory(owner)).map(row => row.id));
+    if (authenticatedUser.current !== owner) return;
+    for (const attempt of attempts) if (attempt.status === 'completed' && !known.has(attempt.id)) await rememberPractice(owner, { ...attemptSummary(attempt), pending: true });
+    if (navigator.onLine) void syncPracticeHistory(owner).catch(() => {});
+  }
+  useEffect(() => {
+    currentAttempt.current = null; setSavedAttempts([]); setSavedQuestions([]); setStorageError(''); setArchiveReady(false);
+    if (!userId) { setArchiveReady(true); return; }
+    let active = true;
+    void refreshArchive(userId).catch(() => { if (active && authenticatedUser.current === userId) setStorageError('Saved practice could not load on this device. Try again.'); }).finally(() => { if (active) setArchiveReady(true); });
+    return () => { active = false; };
+  }, [userId]);
+
+  async function persistCheckpoint() {
+    const attempt = currentAttempt.current;
+    if (!attempt || attempt.owner !== authenticatedUser.current || attempt.status !== 'active' || checkpointRef.current.attemptId !== attempt.id) return;
+    const saved = await saveCheckpoint(attempt.owner, attempt.id, attempt.writer, checkpointRef.current.progress);
+    if (authenticatedUser.current !== attempt.owner || currentAttempt.current?.id !== attempt.id || !saved) return;
+    currentAttempt.current = saved;
+    setSavedAttempts(previous => [saved, ...previous.filter(row => row.id !== saved.id)]);
+  }
+  useEffect(() => {
+    if (screen !== 'exam') return;
+    void persistCheckpoint().catch(error => setStorageError((error?.message?.includes('another tab') || error?.message?.includes('unavailable')) ? error.message : 'Your latest answers could not be saved. Keep this exam open and retry.'));
+  }, [answers, writtenAnswers, flagged, currentQ, screen]);
+  useEffect(() => {
+    const save = () => { void persistCheckpoint().catch(() => {}); };
+    window.addEventListener('pagehide', save); document.addEventListener('visibilitychange', save);
+    return () => { window.removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', save); };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    setBookmarkIdentity(null);
+    if (visibleQuestion && (screen === 'exam' || screen === 'review-answers')) void bookmarkKey(practiceSource, visibleQuestion).then(key => { if (active) setBookmarkIdentity({ question: visibleQuestion, key }); }).catch(() => {});
+    return () => { active = false; };
+  }, [visibleQuestion, practiceSource, screen]);
+
+  async function openSavedAttempt(id: string, resume: boolean) {
+    const owner = userId;
+    setStorageError('');
+    try {
+      await persistCheckpoint();
+      const { attempt, paper } = resume ? await claimAttempt(owner, id) : await readAttempt(owner, id);
+      if (authenticatedUser.current !== owner) return;
+      if (resume && attempt.status !== 'active') throw new Error('This exam is already completed. Open it in Past sessions.');
+      currentAttempt.current = resume ? attempt : null;
+      setActiveQuestions(paper.questions as Q[]); setAnswers(attempt.answers); setWrittenAnswers(attempt.writtenAnswers); setFlagged(attempt.flagged);
+      setCustomizeBundle({ id: attempt.source.bundleId, title: attempt.title, questions: paper.questions, assets: paper.assets });
+      setPracticeSource(attempt.source); setExamDuration(attempt.duration); setPracticeMode(attempt.practice);
+      setTimeLeft(Math.max(0, Math.ceil((attempt.deadline - Date.now()) / 1000))); setTimeTaken(attempt.timeTaken || 0);
+      setCurrentQ(attempt.currentQ); setReviewQ(0); setShowModal(false); submitted.current = !resume;
+      setReviewBack('history'); setScreen(resume ? 'exam' : 'review-answers');
+    } catch (error: any) { if (authenticatedUser.current === owner) setStorageError(error.message || 'Your saved exam could not load. Try again.'); }
+  }
+  async function toggleBookmark() {
+    if (bookmarkBusy || !currentBookmarkKey || !visibleQuestion || !userId) return;
+    const owner = userId;
+    setBookmarkBusy(true);
+    try {
+      if (bookmarked) await removeBookmark(owner, currentBookmarkKey);
+      else await saveBookmark(owner, { title: customizeBundle?.title || 'Saved question', source: practiceSource, question: visibleQuestion, assets: customizeBundle?.assets || {}, answer: answers[screen === 'review-answers' ? reviewQ : currentQ] ?? null });
+      await refreshArchive(owner);
+    } catch { if (authenticatedUser.current === owner) setStorageError('This question could not be saved. Check device storage and try again.'); }
+    finally { setBookmarkBusy(false); }
+  }
+  function openSavedQuestion(row: SavedBookmark) {
+    if (row.owner !== userId) return;
+    currentAttempt.current = null;
+    setActiveQuestions([row.question as Q]); setAnswers([row.answer]); setWrittenAnswers([]); setFlagged([false]); setReviewQ(0);
+    setPracticeSource(row.source); setCustomizeBundle({ id: row.source.bundleId, title: row.title, assets: row.assets });
+    setReviewBack('bookmarks'); setScreen('review-answers');
+  }
+
   useEffect(() => {
     const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) { void syncStudyHistory([], owner).catch(() => {}); void syncPracticeHistory(owner).catch(() => {}); } };
     window.addEventListener('online', flush); document.addEventListener('visibilitychange', flush);
@@ -1049,6 +1150,7 @@ export default function App() {
       if (!active) return;
       setAuthReady(true);
       if (previousUser && previousUser !== user?.id) {
+        currentAttempt.current = null;
         setReminderSearch(''); pendingReminder.current = null;
         setActiveQuestions(DEMO_QUESTIONS); setWrittenAnswers([]); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
         setFlagged(Array(DEMO_QUESTIONS.length).fill(false)); setCurrentQ(0);
@@ -1157,7 +1259,8 @@ export default function App() {
   // A wall-clock deadline stays accurate when a phone suspends its browser tab.
   useEffect(() => {
     if (screen !== "exam") { examDeadline.current = null; return; }
-    examDeadline.current = Date.now() + timeLeft * 1000;
+    if (!currentAttempt.current || currentAttempt.current.status !== 'active') { setScreen(currentAttempt.current?.status === 'completed' ? 'results' : 'practice-history'); return; }
+    examDeadline.current = currentAttempt.current.deadline;
     const updateTimer = () => setTimeLeft(Math.max(0, Math.ceil(((examDeadline.current || Date.now()) - Date.now()) / 1000)));
     const id = setInterval(updateTimer, 1000);
     document.addEventListener("visibilitychange", updateTimer);
@@ -1172,20 +1275,33 @@ export default function App() {
   const handleSubmit = async () => {
     if (submitted.current) return;
     submitted.current = true;
+    const owner = userId, activeAttempt = currentAttempt.current;
+    if (!activeAttempt || activeAttempt.owner !== owner) { submitted.current = false; setStorageError('Open your unfinished exam from Past sessions before submitting.'); return; }
+    let completed: SavedAttempt;
+    try {
+      completed = await completeAttempt(owner, activeAttempt.id, activeAttempt.writer, { answers, writtenAnswers, flagged, currentQ });
+    } catch (error: any) {
+      submitted.current = false; setShowModal(false);
+      setStorageError((error.message?.includes('another tab') || error.message?.includes('unavailable')) ? error.message : 'Your result could not be saved. Keep this exam open, check device storage, then tap Finish to retry.'); return;
+    }
+    if (authenticatedUser.current !== owner) return;
+    currentAttempt.current = completed;
+    setSavedAttempts(previous => [completed, ...previous.filter(row => row.id !== completed.id)]);
+    setStorageError(''); setReviewBack('library');
     const s = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] === answerIndex(q)).length;
-    setTimeTaken(examDuration - timeLeft);
+    setTimeTaken(completed.timeTaken || 0);
     setShowModal(false);
     setScreen("results");
     // Save to Supabase if user is logged in
     if (userId) {
-      const completedAt = new Date().toISOString(), resultId = crypto.randomUUID();
+      const completedAt = completed.completedAt!, resultId = completed.id;
       const title = [...new Set(activeQuestions.map(question => question.subject).filter(Boolean))].slice(0, 3).join(', ') || 'CBT Session';
-      const localResult: PracticeSummary = { id: resultId, title, completed_at: completedAt, score: s, total_questions: activeQuestions.length, graded_total: activeQuestions.filter(question => answerIndex(question) !== null).length, answered_count: answers.filter(answer => answer !== null).length, duration_seconds: examDuration - timeLeft, source_bundle_id: practiceSource.bundleId, source_bundle_version: practiceSource.version, pending: true };
+      const localResult: PracticeSummary = { id: resultId, title, completed_at: completedAt, score: s, total_questions: activeQuestions.length, graded_total: activeQuestions.filter(question => answerIndex(question) !== null).length, answered_count: answers.filter(answer => answer !== null).length, duration_seconds: completed.timeTaken || 0, source_bundle_id: practiceSource.bundleId, source_bundle_version: practiceSource.version, pending: true };
       setSessions(previous => mergePracticeHistory(previous, [localResult]));
       void rememberPractice(userId, localResult).then(() => syncPracticeHistory(userId)).catch(error => console.warn('Device progress could not sync:', error.message));
-      void syncStudyHistory([{ id: resultId, completed_at: completedAt, total_questions: activeQuestions.filter(question => answerIndex(question) !== null).length, score: s, title, duration_seconds: examDuration - timeLeft }], userId).catch(() => {});
+      void syncStudyHistory([{ id: resultId, completed_at: completedAt, total_questions: activeQuestions.filter(question => answerIndex(question) !== null).length, score: s, title, duration_seconds: completed.timeTaken || 0 }], userId).catch(() => {});
       try {
-        const durationSeconds = examDuration - timeLeft;
+        const durationSeconds = completed.timeTaken || 0;
         const attempts = activeQuestions.map((question, index) => ({
           questionKey: practiceQuestionKey(practiceSource.bundleId, question, index),
           topicKey: question.subject || "general",
@@ -1217,15 +1333,18 @@ export default function App() {
   };
 
   const handleAnswer = (qi: number, opt: number) => {
+    if (submitted.current) return;
     setAnswers(prev => { const n = [...prev]; n[qi] = opt; return n; });
   };
 
   const handleWrittenAnswer = (qi: number, text: string) => {
+    if (submitted.current) return;
     setWrittenAnswers(previous => { const next = [...previous]; next[qi] = text; return next; });
     setAnswers(previous => { const next = [...previous]; next[qi] = text.trim() ? 0 : null; return next; });
   };
 
   const handleFlag = (qi: number) => {
+    if (submitted.current) return;
     setFlagged(prev => { const n = [...prev]; n[qi] = !n[qi]; return n; });
   };
 
@@ -1245,19 +1364,20 @@ export default function App() {
           userName={userName}
           ownerId={userId}
           reminderSearch={reminderSearch}
-          sessions={sessions}
+          sessions={displaySessions}
           offlineLibrary={offlineLibrary}
           globalLibrary={globalLibrary}
           libraryCatalog={libraryCatalog}
           libraryStatus={libraryStatus}
           offlineReady={offlineReady}
-          historyReady={historyReady}
+          historyReady={historyReady && archiveReady}
           onRetryLibrary={() => { void refreshGlobalLibrary(); }}
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
           onSelectManufacturer={handleSelectManufacturer}
           preparation={preparation}
           onPreparation={changePreparation}
+          studyTools={<div className="practice-tools">{ongoingAttempt && <div className="practice-resume"><span><strong>{ongoingAttempt.title}</strong><small>{ongoingAttempt.answers.filter(answer => answer !== null).length} of {ongoingAttempt.questionCount} answered</small></span><button className="study-primary" onClick={() => void openSavedAttempt(ongoingAttempt.id, true)}>Resume<ArrowRight size={16} /></button></div>}<button className="text-button" onClick={() => nav('practice-history')}><History size={17} />Past sessions</button><button className="text-button" onClick={() => nav('saved-questions')}><Bookmark size={17} />Saved questions{savedQuestions.length ? ` · ${savedQuestions.length}` : ''}</button></div>}
         />
       );
       case "snap": return <SnapScreen nav={nav} draft={uploadDraft} onDraftChange={setUploadDraft} onSessionStarted={(id) => setVisionSessionId(id)} />;
@@ -1301,7 +1421,7 @@ export default function App() {
           ownerId={userId}
           onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
-            setPracticeMode(mode === "practice");
+            const owner = userId;
             const sourceBundleId = String(customizeBundle.id || "library");
             // Keep the source identity through filtering, shuffling, ranking,
             // and focused retries so progress stays attached to the question.
@@ -1325,6 +1445,14 @@ export default function App() {
                 console.warn("Could not personalise question order", error);
               }
             }
+            if (!owner || authenticatedUser.current !== owner) throw new Error('Sign in again before starting.');
+            const source = { bundleId: sourceBundleId, version: customizeBundle.updatedAt || customizeBundle.updated_at || null };
+            let attempt: SavedAttempt;
+            try { attempt = await createAttempt(owner, { title: customizeBundle.title || customizeBundle.name || [...new Set(recommended.map(q => q.subject))].join(', '), source, questions: recommended, assets: customizeBundle.assets || {}, duration: durationSeconds, practice: mode === 'practice' }); }
+            catch { throw new Error('This device could not save your exam. Check available storage and try again.'); }
+            if (authenticatedUser.current !== owner) return;
+            currentAttempt.current = attempt; setSavedAttempts(previous => [attempt, ...previous]); setStorageError('');
+            setPracticeMode(mode === 'practice');
             setActiveQuestions(recommended);
             setWrittenAnswers([]);
             setAnswers(Array(recommended.length).fill(null));
@@ -1354,6 +1482,7 @@ export default function App() {
           showModal={showModal} onModal={setShowModal}
           onSubmit={handleSubmit} nav={nav}
           practice={practiceMode}
+          bookmarked={bookmarked} bookmarkBusy={bookmarkBusy} onBookmark={currentBookmarkKey ? () => void toggleBookmark() : undefined}
         />
       );
       case "results": return <StudyResults questions={activeQuestions} timeTaken={timeTaken} answers={answers} nav={destination => {
@@ -1365,12 +1494,14 @@ export default function App() {
         setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed, assets: customizeBundle?.assets });
         setScreen("customize-cbt");
       }} />;
-      case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onNotifications={() => nav("settings-notifications")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
-      case "practice-history": return !historyReady ? <ContentSkeleton kind="history" label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
+
+      case "review-answers": return <StudyWorkspace bookmarked={bookmarked} bookmarkBusy={bookmarkBusy} onBookmark={currentBookmarkKey ? () => void toggleBookmark() : undefined} writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { if (destination === 'home' && reviewBack !== 'library') { nav(reviewBack === 'history' ? 'practice-history' : 'saved-questions'); return; } nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
+      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={displaySessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onNotifications={() => nav("settings-notifications")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "practice-history": return !historyReady || !archiveReady ? <ContentSkeleton kind="history" label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={displaySessions} attempts={savedAttempts} onResume={id => void openSavedAttempt(id, true)} onReview={id => void openSavedAttempt(id, false)} onDiscard={async id => { await discardAttempt(userId, id); if (currentAttempt.current?.id === id) currentAttempt.current = null; await refreshArchive(userId); }} onBookmarks={() => nav('saved-questions')} onBack={() => handleNavTab('home')} onStart={() => handleNavTab('library')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
+      case "saved-questions": return !archiveReady ? <ContentSkeleton kind="history" label="Loading saved questions" fullPage /> : <SavedQuestionsScreen bookmarks={savedQuestions} onOpen={openSavedQuestion} onRemove={async id => { try { await removeBookmark(userId, id); await refreshArchive(userId); } catch { setStorageError('This saved question could not be removed. Try again.'); } }} onBack={() => nav('practice-history')} />;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
-      case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
+      case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={displaySessions} onBack={() => nav("preference")} />;
       case "settings-notifications": return <NotificationsScreen key={userId} ownerId={userId} onBack={() => nav("preference")} onOpen={path => {
         const url = new URL(path, window.location.origin);
         if (url.origin !== window.location.origin) return;
@@ -1386,6 +1517,7 @@ export default function App() {
 
   return (
     <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
+      {storageError && userId && <div className="practice-storage-notice" role="alert"><span>{storageError}</span><button className="text-button" onClick={async () => { try { await persistCheckpoint(); await refreshArchive(userId); setStorageError(''); } catch { setStorageError('Device storage is unavailable. Keep this exam open and try again.'); } }}>Retry</button><button className="icon-button" aria-label="Dismiss storage notice" onClick={() => setStorageError('')}><X size={17} /></button></div>}
       <div className="h-full w-full overflow-hidden">
         {!authReady ? <ContentSkeleton kind="page" label="Opening PastQ" fullPage /> : restoringImages ? <ContentSkeleton kind="builder" label="Loading your material" fullPage /> : renderScreen()}
       </div>

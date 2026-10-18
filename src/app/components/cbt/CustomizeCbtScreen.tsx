@@ -76,7 +76,7 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack }: 
       const questions = buildSubjectSession(selected, bySubject, settings, shuffle);
       if (!questions.length) throw new Error('Empty selection');
       await onProceed({ questions, durationSeconds, mode, subjects: selected, years: [...new Set(selected.filter(subject => settings[subject].studyBy === 'paper').map(subject => settings[subject].year))], topics: selected.flatMap(subject => settings[subject].topics || []) });
-    } catch { setError('Could not start this session. Please try again.'); starting.current = false; setBusy(false); }
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not start this session. Please try again.'); starting.current = false; setBusy(false); }
   }
   const currentSettings = editing ? settings[editing] : null;
   const currentQuestions = editing ? bySubject[editing] || [] : [];

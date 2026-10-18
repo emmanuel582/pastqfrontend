@@ -1,18 +1,32 @@
+import type { SavedAttempt } from '../../../services/practiceArchive';
+import StudyDialog from '../StudyDialog';
 import { useState } from 'react';
 import ContentSkeleton from '../ContentSkeleton';
 import ExamArtwork from '../ExamArtwork';
 import { gradedPercent } from '../../../utils/studyPlan';
-import { ArrowLeft, ArrowRight, BookOpen, Download, Search, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Download, Search, Upload, Bookmark, Trash2 } from 'lucide-react';
 import { CatalogBrowser } from './CatalogBrowser';
 import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 
-export function StudyProgress({ sessions, onStart, onBack }: { sessions: any[]; onStart: () => void; onBack: () => void }) {
-  return <main className="study-app library-screen"><header className="study-topbar"><span className="wordmark">past<span>q</span><span className="wordmark-rule" /></span><button className="text-button" onClick={onBack}><ArrowLeft size={17} />Preferences</button></header><div className="library-content"><div className="results-heading"><h1>Past sessions</h1></div><div className="progress-session-list">{sessions.length ? sessions.map(session => {
-    const total = session.total_questions ?? session.total ?? 0;
-    const score = session.score ?? 0;
-    const at = session.completed_at || session.created_at; const date = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : session.date;
-    return <div className="material-row" key={session.id}><BookOpen size={22} /><span><strong>{session.title || 'Practice session'}</strong><small>{date || 'Completed'}</small></span><strong>{gradedPercent(session) === null ? 'Completed' : `${gradedPercent(session)}%`}</strong></div>;
-  }) : <div className="library-empty"><BookOpen size={30} strokeWidth={1.3} /><h3>No sessions yet.</h3><button className="study-primary" onClick={onStart}>Find a paper<ArrowRight size={17} /></button></div>}</div></div></main>;
+export function StudyProgress({ sessions, attempts = [], onStart, onBack, onResume, onReview, onDiscard, onBookmarks }: {
+  sessions: any[]; attempts?: SavedAttempt[]; onStart: () => void; onBack: () => void;
+  onResume?: (id: string) => void; onReview?: (id: string) => void; onDiscard?: (id: string) => Promise<void>; onBookmarks?: () => void;
+}) {
+  const [discard, setDiscard] = useState<SavedAttempt | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const ongoing = attempts.filter(attempt => attempt.status === 'active');
+  return <main className="study-app library-screen"><header className="study-topbar"><span className="wordmark">past<span>q</span></span><button className="text-button" onClick={onBack}><ArrowLeft size={17} />Back</button></header>
+    <div className="library-content"><div className="student-section-heading archive-heading"><h1>Past sessions</h1>{onBookmarks && <button className="text-button" onClick={onBookmarks}><Bookmark size={17} />Saved questions</button>}</div>
+      {ongoing.length > 0 && <section className="archive-ongoing" aria-label="Unfinished exams"><h2>Unfinished</h2>{ongoing.map(attempt => <div className="material-row" key={attempt.id}><BookOpen size={22} /><span><strong>{attempt.title}</strong><small>{attempt.answers.filter(answer => answer !== null).length} of {attempt.questionCount} answered</small></span><button className="study-primary" onClick={() => onResume?.(attempt.id)}>Resume</button>{onDiscard && <button className="icon-button" aria-label={`Discard ${attempt.title}`} onClick={() => { setDiscard(attempt); setError(''); }}><Trash2 size={17} /></button>}</div>)}</section>}
+      <div className="progress-session-list">{sessions.map(session => {
+        const at = session.completed_at || session.created_at, percent = gradedPercent(session);
+        const date = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : session.date;
+        const canReview = attempts.some(attempt => attempt.id === session.id && attempt.status === 'completed');
+        const content = <><BookOpen size={22} /><span><strong>{session.title || 'Practice session'}</strong><small>{date || 'Completed'} · {canReview ? 'Review answers' : 'Score only'}</small></span><strong>{percent === null ? 'Completed' : `${percent}%`}</strong>{canReview && <ArrowRight size={17} />}</>;
+        return canReview ? <button className="material-row archive-review" key={session.id} onClick={() => onReview?.(session.id)}>{content}</button> : <div className="material-row" key={session.id}>{content}</div>;
+      })}{!sessions.length && !ongoing.length && <div className="library-empty"><BookOpen size={30} strokeWidth={1.3} /><h3>No sessions yet.</h3><button className="study-primary" onClick={onStart}>Find a paper<ArrowRight size={17} /></button></div>}</div>
+    </div>
+    {discard && <StudyDialog title="Discard this unfinished exam?" onClose={() => { if (!busy) setDiscard(null); }}><p>Your completed sessions and downloaded papers stay saved.</p>{error && <p role="alert">{error}</p>}<div className="archive-dialog-actions"><button className="study-secondary" disabled={busy} onClick={() => setDiscard(null)}>Keep exam</button><button className="study-primary" disabled={busy} onClick={async () => { setBusy(true); try { await onDiscard?.(discard.id); setDiscard(null); } catch { setError('Could not discard this exam. Try again.'); } finally { setBusy(false); } }}>{busy ? 'Discarding…' : 'Discard exam'}</button></div></StudyDialog>}
+  </main>;
 }
 
 export function StudyLibrary({ globalLibrary, offlineLibrary, catalog, initialSearch = '', onOpen, onDownload, onSelect, onUpload, status, onRetry, savedReady = true }: { globalLibrary: any[]; offlineLibrary: any[]; catalog: LibraryCatalog | null; initialSearch?: string; onOpen: (bundle: any) => void; onDownload: (bundle: any) => void | Promise<void>; onSelect: (m: CatalogManufacturer, e: CatalogExamType, o: CatalogUniversity) => void; onUpload: () => void; status: "loading" | "ready" | "error"; onRetry: () => void; savedReady?: boolean }) {
