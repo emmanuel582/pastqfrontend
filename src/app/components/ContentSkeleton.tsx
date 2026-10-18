@@ -24,7 +24,7 @@ function Home({ hasSaved }: { hasSaved: boolean }) {
   </> : <FirstStep />}</div></div>;
 }
 function Catalog() {
-  return <div className="catalog-browser"><div className="category-gallery">{[0, 1, 2].map(index => <div className="category-tile" key={index}><Block className="study-art" /><span className="category-label"><Block width="85%" height={21.5} /></span><Block width={14} height={14} /></div>)}</div><div className="catalog-heading"><Block width={100} height={44} className="skeleton-track" /></div><Rows kind="organizations" /></div>;
+  return <div className="catalog-browser"><div className="category-gallery">{[0, 1, 2].map(index => <div className="category-group" key={index}><div className="category-tile"><Block className="study-art" /><span className="category-label"><Block width="min(85%,240px)" height={21.5} /></span><Block width={14} height={14} /></div></div>)}</div></div>;
 }
 function Preferences({ hasActivity }: { hasActivity: boolean }) {
   return <div className="study-app student-preferences"><Topbar className="student-preferences-header" /><div className="student-preferences-content"><div className="student-identity"><Block width={46} height={46} className="skeleton-circle" /><Copy /></div>
