@@ -25,8 +25,10 @@
 .student-chart circle:last-child { fill:var(--study-accent); }
 .student-chart-dates { display:flex; justify-content:space-between; padding-left:28px; color:var(--study-muted); font-size:11px; }
 .student-chart-empty { display:grid; place-items:center; min-height:110px; color:var(--study-muted); font-size:13px; text-align:center; }
-.student-settings-list { margin-top:28px; }
-.student-settings-list>button { display:flex; align-items:center; gap:15px; min-height:88px; width:100%; padding:20px 2px; border:0; border-bottom:1px solid var(--study-line); text-align:left; background:transparent; color:var(--study-ink); }
+.student-settings-list { margin-top:24px; }
+.student-practice-links { margin:0 0 24px; }
+.student-practice-links>button { min-height:64px; padding:12px 2px; }
+.student-settings-list>button { display:flex; align-items:center; gap:15px; min-height:72px; width:100%; padding:14px 2px; border:0; border-bottom:1px solid var(--study-line); text-align:left; background:transparent; color:var(--study-ink); }
 .student-settings-list>button:hover { background:rgba(var(--study-wash-rgb),.025); }
 .student-setting-icon { color:var(--study-accent); width:34px; display:grid; place-items:center; flex-shrink:0; }
 .student-settings-list>button>span:nth-child(2) { flex:1; min-width:0; }

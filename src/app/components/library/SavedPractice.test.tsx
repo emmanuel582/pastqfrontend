@@ -13,12 +13,16 @@ afterEach(async () => { await act(async()=>root.unmount());host.remove();vi.unst
 async function click(button:Element|null){expect(button).not.toBeNull();await act(async()=>{(button as HTMLButtonElement).click()});}
 describe('saved practice navigation',()=>{
  it('opens saved corrections but never pretends a legacy score contains answers',async()=>{
-  const review=vi.fn();await act(async()=>root.render(<StudyProgress sessions={[{id:'saved',title:'UTME Biology',score:0,total_questions:1},{id:'legacy',title:'Old result',score:1,total_questions:1}]} attempts={[completed]} onReview={review} onStart={()=>{}} onBack={()=>{}} />));
+  const review=vi.fn(),back=vi.fn();await act(async()=>root.render(<StudyProgress sessions={[{id:'saved',title:'UTME Biology',score:0,total_questions:1},{id:'legacy',title:'Old result',score:1,total_questions:1}]} attempts={[completed]} onReview={review} onStart={()=>{}} onBack={back} />));
+  expect(host.querySelector('header h1')?.textContent).toBe('Past sessions');expect(host.querySelectorAll('h1')).toHaveLength(1);expect(host.querySelector('.wordmark')).toBeNull();
+  await click(host.querySelector('[aria-label="Back to Preferences"]'));expect(back).toHaveBeenCalledOnce();
   expect(host.querySelectorAll('.archive-review')).toHaveLength(1);expect(host.textContent).toContain('Score only');await click(host.querySelector('.archive-review'));expect(review).toHaveBeenCalledWith('saved');
  });
  it('opens a saved question and removes only its own bookmark',async()=>{
   const open=vi.fn(),remove=vi.fn().mockResolvedValue(undefined);const bookmark={key:'q1',owner:'ada',title:'UTME',source:completed.source,question,assets:{},answer:1,createdAt:'2026-10-19'};
-  await act(async()=>root.render(<SavedQuestionsScreen bookmarks={[bookmark]} onOpen={open} onRemove={remove} onBack={()=>{}} />));
+  const back=vi.fn();await act(async()=>root.render(<SavedQuestionsScreen bookmarks={[bookmark]} onOpen={open} onRemove={remove} onBack={back} />));
+  expect(host.querySelector('header h1')?.textContent).toBe('Saved questions');expect(host.querySelectorAll('h1')).toHaveLength(1);expect(host.querySelector('.wordmark')).toBeNull();
+  await click(host.querySelector('[aria-label="Back to Preferences"]'));expect(back).toHaveBeenCalledOnce();
   await click(host.querySelector('.archive-bookmark-open'));expect(open).toHaveBeenCalledWith(bookmark);
   await click(host.querySelector('[aria-label="Remove saved Biology question"]'));expect(remove).toHaveBeenCalledWith('q1');
  });

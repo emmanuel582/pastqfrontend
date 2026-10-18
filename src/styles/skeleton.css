@@ -15,7 +15,8 @@
 .content-skeleton .skeleton-character { flex-shrink:1; }
 .skeleton-first-link { margin-top:30px; }
 .skeleton-stat { margin-top:8px; }
-.skeleton-setting { display:flex; align-items:center; gap:15px; min-height:88px; padding:20px 2px; border-bottom:1px solid var(--study-line); }
+.skeleton-setting { display:flex; align-items:center; gap:15px; min-height:72px; padding:14px 2px; border-bottom:1px solid var(--study-line); }
+.student-practice-links .skeleton-setting { min-height:64px; padding:12px 2px; }
 .skeleton-timing { display:flex; gap:8px; margin:16px 0; }
 .skeleton-timing>.skeleton-block { flex:1; }
 .skeleton-builder-step { display:flex; align-items:center; justify-content:center; flex:1; gap:9px; min-height:42px; border-bottom:2px solid var(--study-line); }

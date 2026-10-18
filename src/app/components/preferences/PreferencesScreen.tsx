@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bell, BookOpen, Check, ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, Bookmark, BookOpen, Check, History, ChevronRight, Monitor, Moon, Sun } from 'lucide-react';
 import ContentSkeleton from '../ContentSkeleton';
 import ReadyImage from '../ReadyImage';
 import ScholarMascot from '../ScholarMascot';
@@ -14,7 +14,7 @@ function progressData(sessions: History[]) {
     return total > 0 && Number.isFinite(score) && score >= 0 && score <= total && Number.isFinite(at) ? [{ score: Math.round(score / total * 100), at }] : [];
   }).sort((a, b) => a.at - b.at);
 }
-export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onNotifications, onProgress, onStudy = onProgress, preparationEnabled = false, onPreparation }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onNotifications?: () => void; onProgress: () => void; onStudy?: () => void; preparationEnabled?: boolean; onPreparation?: (enabled: boolean) => void }) {
+export function PreferencesScreen({ ownerId, name, email, avatar, sessions, theme, onTheme, onReminders, onNotifications, onProgress, onSavedQuestions, onStudy = onProgress, preparationEnabled = false, onPreparation }: { ownerId: string; name: string; email: string; avatar: string; sessions: History[]; theme: StudyTheme; onTheme: () => void; onReminders: () => void; onNotifications?: () => void; onProgress: () => void; onSavedQuestions?: () => void; onStudy?: () => void; preparationEnabled?: boolean; onPreparation?: (enabled: boolean) => void }) {
   const data = progressData(sessions), recent = data.slice(-10), average = data.length ? Math.round(data.reduce((sum, item) => sum + item.score, 0) / data.length) : null;
   const [reminders, setReminders] = useState<ReminderSnapshot | null>(null);
   const [remindersLoading, setRemindersLoading] = useState(true);
@@ -22,10 +22,11 @@ export function PreferencesScreen({ ownerId, name, email, avatar, sessions, them
   const initials = (name || 'Student').split(/\s+/).map(word => word[0]).slice(0, 2).join('').toUpperCase();
   const reminderLabel = !reminders ? 'Manage reminders' : reminders.settings.enabled ? reminders.settings.pausedUntil && Date.parse(reminders.settings.pausedUntil) > Date.now() ? 'Paused' : `${reminders.settings.mode === 'smart' ? 'Smart timing' : 'Daily'} · ${reminders.preview.targetTime}` : 'Off';
   return <main className="study-app student-preferences">
-    <header className="study-topbar student-preferences-header"><span className="wordmark">past<span>q</span></span><h1>Preferences</h1></header>
+    <header className="study-topbar student-preferences-header"><h1>Preferences</h1></header>
     <div className="student-preferences-content">
       <div className="student-identity">{avatar ? <ReadyImage src={avatar} alt="" fallback={<span className="student-initials">{initials}</span>} /> : <span className="student-initials" aria-hidden="true">{initials}</span>}<div><strong>{name || 'Student'}</strong><span>{email}</span></div></div>
-      {sessions.length > 0 ? <section className="student-progress" aria-labelledby="student-progress-title"><div className="student-section-heading"><h2 id="student-progress-title">Your progress</h2><button className="text-button" onClick={onProgress}>View sessions<ArrowRight size={15} /></button></div>
+      <div className="student-settings-list student-practice-links"><button onClick={onProgress}><span className="student-setting-icon"><History size={20} /></span><span><strong>Past sessions</strong></span><ChevronRight size={19} /></button>{onSavedQuestions && <button onClick={onSavedQuestions}><span className="student-setting-icon"><Bookmark size={20} /></span><span><strong>Saved questions</strong></span><ChevronRight size={19} /></button>}</div>
+      {sessions.length > 0 ? <section className="student-progress" aria-labelledby="student-progress-title"><div className="student-section-heading"><h2 id="student-progress-title">Your progress</h2></div>
         <dl className="student-stats"><div><dt>Sessions</dt><dd>{sessions.length}</dd></div><div><dt>Average</dt><dd>{average === null ? '—' : `${average}%`}</dd></div><div><dt>Best</dt><dd>{data.length ? `${Math.max(...data.map(item => item.score))}%` : '—'}</dd></div></dl>
         {recent.length ? <div className="student-chart"><svg viewBox="0 0 560 180" role="img" aria-label={`Scores from your last ${recent.length} graded sessions. Latest score ${recent[recent.length - 1].score} percent.`}>
           {[0, 50, 100].map(value => <g key={value}><line x1="32" x2="540" y1={150 - value * 1.25} y2={150 - value * 1.25} /><text x="24" y={154 - value * 1.25} textAnchor="end">{value}</text></g>)}

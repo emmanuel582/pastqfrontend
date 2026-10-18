@@ -4,20 +4,20 @@ import { useState } from 'react';
 import ContentSkeleton from '../ContentSkeleton';
 import ExamArtwork from '../ExamArtwork';
 import { gradedPercent } from '../../../utils/studyPlan';
-import { ArrowLeft, ArrowRight, BookOpen, Download, Search, Upload, Bookmark, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, Download, Search, Upload, Trash2 } from 'lucide-react';
 import { CatalogBrowser } from './CatalogBrowser';
 import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 
-export function StudyProgress({ sessions, attempts = [], onStart, onBack, onResume, onReview, onDiscard, onBookmarks }: {
+export function StudyProgress({ sessions, attempts = [], onStart, onBack, onResume, onReview, onDiscard }: {
   sessions: any[]; attempts?: SavedAttempt[]; onStart: () => void; onBack: () => void;
-  onResume?: (id: string) => void; onReview?: (id: string) => void; onDiscard?: (id: string) => Promise<void>; onBookmarks?: () => void;
+  onResume?: (id: string) => void; onReview?: (id: string) => void; onDiscard?: (id: string) => Promise<void>;
 }) {
   const [discard, setDiscard] = useState<SavedAttempt | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const ongoing = attempts.filter(attempt => attempt.status === 'active');
-  return <main className="study-app library-screen"><header className="study-topbar"><span className="wordmark">past<span>q</span></span><button className="text-button" onClick={onBack}><ArrowLeft size={17} />Back</button></header>
-    <div className="library-content"><div className="student-section-heading archive-heading"><h1>Past sessions</h1>{onBookmarks && <button className="text-button" onClick={onBookmarks}><Bookmark size={17} />Saved questions</button>}</div>
+  return <main className="study-app library-screen archive-screen"><header className="study-topbar archive-topbar"><button className="icon-button" aria-label="Back to Preferences" onClick={onBack}><ArrowLeft size={20} /></button><h1>Past sessions</h1></header>
+    <div className="library-content archive-content">
       {ongoing.length > 0 && <section className="archive-ongoing" aria-label="Unfinished exams"><h2>Unfinished</h2>{ongoing.map(attempt => <div className="material-row" key={attempt.id}><BookOpen size={22} /><span><strong>{attempt.title}</strong><small>{attempt.answers.filter(answer => answer !== null).length} of {attempt.questionCount} answered</small></span><button className="study-primary" onClick={() => onResume?.(attempt.id)}>Resume</button>{onDiscard && <button className="icon-button" aria-label={`Discard ${attempt.title}`} onClick={() => { setDiscard(attempt); setError(''); }}><Trash2 size={17} /></button>}</div>)}</section>}
-      <div className="progress-session-list">{sessions.map(session => {
+      <div className="progress-session-list">{ongoing.length > 0 && sessions.length > 0 && <h2 className="archive-section-title">Completed</h2>}{sessions.map(session => {
         const at = session.completed_at || session.created_at, percent = gradedPercent(session);
         const date = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : session.date;
         const canReview = attempts.some(attempt => attempt.id === session.id && attempt.status === 'completed');
