@@ -82,7 +82,7 @@ export function RemindersScreen({ ownerId, sessions, onBack }: { ownerId: string
       <button className="study-primary reminder-save" disabled={busy || JSON.stringify(draft) === JSON.stringify(snapshot.settings)} onClick={() => void run(() => saveReminders(draft, ownerId), 'Reminder settings saved.')}>{busy ? 'Saving…' : 'Save changes'}</button>
       {snapshot.settings.enabled && <button className="text-button reminder-pause" disabled={busy} onClick={() => void run(() => saveReminders({ ...snapshot.settings, pausedUntil: paused ? null : new Date(Date.now() + 7 * 86400000).toISOString() }, ownerId), paused ? 'Reminders resumed.' : 'Reminders paused for 7 days.', true)}>{paused ? 'Resume reminders' : 'Pause for 7 days'}</button>}
       {status && <p className="student-setting-note" role="status">{status}</p>}
-    </> : !error && <ContentSkeleton kind="form" label="Loading reminders" />}
+    </> : !error && <ContentSkeleton kind="reminders" label="Loading reminders" />}
     {error && <div className="reminder-error" role="alert"><p>{error}</p>{!snapshot && <button className="text-button" onClick={() => retry(value => value + 1)}>Try again</button>}</div>}
   </div></main>;
 }

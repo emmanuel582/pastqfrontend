@@ -19,20 +19,24 @@
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
       
     <style>
-        .boot-skeleton { box-sizing:border-box; min-height:100dvh; padding:32px max(24px,calc((100vw - 860px)/2)); background:#faf6f0; }
+        .boot-skeleton { box-sizing:border-box; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr) auto; padding:max(24px,env(safe-area-inset-top)) 24px max(20px,env(safe-area-inset-bottom)); background:#faf6f0; }
         html[data-theme="dark"] .boot-skeleton { background:#151515; }
-        .boot-skeleton span { display:block; height:14px; margin-bottom:18px; border-radius:5px; background:#eadfd3; }
+        .boot-skeleton span { display:block; background:#eadfd3; border-radius:5px; }
         html[data-theme="dark"] .boot-skeleton span { background:#292725; }
-        .boot-skeleton span:first-child { width:72px; height:24px; margin-bottom:64px; }
-        .boot-skeleton span:nth-child(2) { width:45%; height:32px; }
-        .boot-skeleton span:nth-child(3) { width:30%; }
-        .boot-skeleton span:nth-child(4) { height:210px; margin-top:32px; border-radius:16px; }
+        .boot-brand { display:grid; place-items:center; padding:8px 0; }
+        .boot-brand span { width:58px; height:25px; }
+        .boot-character { display:grid; place-items:center; padding:18px 0 28px; }
+        .boot-character span { width:min(22svh,190px); height:min(43svh,400px); border-radius:42% 42% 18% 18%; }
+        .boot-actions { width:min(100%,360px); margin:auto; display:grid; gap:8px; }
+        .boot-actions>span { height:54px; border-radius:12px; }
+        .boot-actions>div { height:48px; display:grid; place-items:center; }
+        .boot-actions>div>span { height:14px; width:50px; }
       </style>
     </head>
 
     <body>
       
-      <div id="root"><div class="boot-skeleton" role="status" aria-label="Opening PastQ" aria-busy="true"><div aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div></div></div>
+      <div id="root"><div class="boot-skeleton" role="status" aria-label="Opening PastQ" aria-busy="true"><div class="boot-brand" aria-hidden="true"><span></span></div><div class="boot-character" aria-hidden="true"><span></span></div><div class="boot-actions" aria-hidden="true"><span></span><div><span></span></div></div></div></div>
       <noscript>Enable JavaScript to open PastQ.</noscript>
       <script type="module" src="/src/main.tsx"></script>
       

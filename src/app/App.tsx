@@ -260,7 +260,7 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />)}
+        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" hasSaved={studyMaterials.length > 0} label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")} />)}
         {tab === "library" && (
           <PreparationLibrary
             key={reminderSearch}
@@ -280,7 +280,7 @@ function HomeScreen({
           />
         )}
         {tab === "lead" && <DiscoverScreen key={ownerId} ownerId={ownerId} />}
-        {tab === "preference" && <ContentSkeleton kind="home" label="Loading preferences" fullPage />}
+        {tab === "preference" && <ContentSkeleton kind="preferences" label="Loading preferences" fullPage />}
       </div>
       <BottomNav tab={tab} onTab={onTab} onSnap={() => nav("snap")} />
     </div>
@@ -1363,8 +1363,8 @@ export default function App() {
         setScreen("customize-cbt");
       }} />;
       case "review-answers": return <StudyWorkspace writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return !historyReady ? <ContentSkeleton kind="home" label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
-      case "practice-history": return !historyReady ? <ContentSkeleton label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
+      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={sessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onProgress={() => nav("practice-history")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "practice-history": return !historyReady ? <ContentSkeleton kind="history" label="Loading past sessions" fullPage /> : <div className="study-shell"><StudyProgress sessions={sessions} onBack={() => nav('preference')} onStart={() => handleNavTab('home')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={sessions} onBack={() => nav("preference")} />;
@@ -1378,7 +1378,7 @@ export default function App() {
   return (
     <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
       <div className="h-full w-full overflow-hidden">
-        {!authReady ? <ContentSkeleton kind="page" label="Opening PastQ" fullPage /> : restoringImages ? <ContentSkeleton kind="form" label="Loading your material" fullPage /> : renderScreen()}
+        {!authReady ? <ContentSkeleton kind="page" label="Opening PastQ" fullPage /> : restoringImages ? <ContentSkeleton kind="builder" label="Loading your material" fullPage /> : renderScreen()}
       </div>
     </div>
   );

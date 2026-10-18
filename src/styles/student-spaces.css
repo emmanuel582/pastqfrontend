@@ -90,3 +90,10 @@
   .discover-code-form .study-primary { padding-inline:14px; }
 }
 @media(prefers-reduced-motion:reduce) { .personal-home *,.discover-screen * { scroll-behavior:auto; transition:none; } }
+
+/* Preserve each original emblem, including its proportions, in a reserved image frame. */
+.study-app .exam-artwork,.catalog-browser .exam-artwork { display:grid; place-items:center; width:48px; height:48px; flex:0 0 48px; border:1px solid var(--study-line); border-radius:10px; color:var(--study-accent); overflow:hidden; }
+.study-app .exam-artwork-official,.catalog-browser .exam-artwork-official { background:#fff; }
+.exam-artwork>.ready-image { display:grid; place-items:center; width:100%; height:100%; }
+.exam-artwork>.ready-image>img { width:100%; height:100%; object-fit:contain; padding:5px; }
+.preparation-environment>.exam-artwork { width:64px; height:64px; flex-basis:64px; border-radius:12px; }
