@@ -5,8 +5,8 @@ export function bundleNeedsImageRepair(bundle: any): boolean {
   if (!Array.isArray(bundle?.questions) || !bundle.questions.length) return false;
   let references = 0;
   for (const question of bundle.questions) {
-    const fields = [question.questionHtml, ...(question.optionsHtml || []), question.explanationHtml];
-    if (String(question.question || '').includes('[Illustration]') && !/<img\b/i.test(question.questionHtml || '') && !question.figures?.some((figure: any) => figure.url)) return true;
+    const fields = [question.questionHtml, ...(question.optionsHtml || []), question.explanationHtml, question.answerHtml];
+    if (String(question.question || '').includes('[Illustration]') && !/<img\b/i.test(question.questionHtml || '') && !question.missingAssets?.length && !question.figures?.some((figure: any) => figure.url)) return true;
     for (const html of fields) {
       for (const match of String(html || '').matchAll(/pastq-asset:([a-f0-9]{64})/g)) {
         references++;

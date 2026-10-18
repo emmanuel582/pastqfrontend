@@ -1186,7 +1186,7 @@ export default function App() {
         const attempts = activeQuestions.map((question, index) => ({
           questionKey: practiceQuestionKey(practiceSource.bundleId, question, index),
           topicKey: question.subject || "general",
-          selectedOptionIndex: question.type === 'short_answer' ? null : answers[index],
+          selectedOptionIndex: question.type === 'short_answer' || question.type === 'theory' ? null : answers[index],
           answered: answers[index] !== null,
           isCorrect: answerIndex(question) === null || answers[index] == null ? null : answers[index] === answerIndex(question),
           attemptOrder: index,

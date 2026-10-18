@@ -16,4 +16,8 @@ describe('downloaded diagram completeness', () => {
     expect(bundleNeedsImageRepair({ questions: [{ question: 'Choose the diagram.', optionsHtml: [`<img src="pastq-asset:${key}">`] }] })).toBe(true);
     expect(bundleNeedsImageRepair({ id:'utme-testdriller-2027', questions:[{question:'A question'}] })).toBe(true);
   });
+  it('checks theory answer images and keeps explicitly flagged source defects from causing a repair loop', () => {
+    expect(bundleNeedsImageRepair({questions:[{question:'Explain this.',answerHtml:`<img src="pastq-asset:${key}">`}]})).toBe(true);
+    expect(bundleNeedsImageRepair({sourceAudit:{imageReferences:0},questions:[{question:'[Illustration] from source',questionHtml:'Source diagram unavailable.',missingAssets:[{reason:'empty_source_image'}]}]})).toBe(false);
+  });
 });

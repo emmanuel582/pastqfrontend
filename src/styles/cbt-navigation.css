@@ -4,6 +4,10 @@
 .exam-subjects>button[aria-pressed="true"] { border-bottom-color:var(--study-accent); background:rgba(var(--study-wash-rgb),.05); color:var(--study-accent); }
 .exam-subjects>button:focus-visible { outline:2px solid var(--study-accent); outline-offset:2px; }
 .exam-workspace .question-meta { justify-content:flex-end; }
+.theory-answer { margin-top:32px; }
+.theory-answer>.study-primary { width:100%; min-height:48px; justify-content:center; white-space:normal; }
+.theory-answer .answer-feedback { margin-top:0; }
+.theory-answer h2 { margin:0 0 18px; font-size:14px; font-weight:600; color:var(--study-muted); }
 @media(max-width:600px) {
   .exam-header .wordmark { display:inline-flex; }
   .exam-subjects { padding:4px 12px; gap:2px 6px; }
