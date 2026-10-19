@@ -1,6 +1,27 @@
-/* Push-only worker: never caches account responses or interferes with exam requests. */
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
+/* One worker for offline study and push. An update waits for open exam tabs to close. */
+const shellCache = 'pastq-shell-' + (typeof SHELL_VERSION === 'string' ? SHELL_VERSION : 'development');
+const shellFiles = typeof SHELL_FILES === 'undefined' ? [] : SHELL_FILES;
+self.addEventListener('install', event => {
+  if (shellFiles.length) event.waitUntil(caches.open(shellCache).then(cache => cache.addAll(shellFiles)));
+});
+self.addEventListener('activate', event => event.waitUntil((async () => {
+  const keys = (await caches.keys()).filter(key => key.startsWith('pastq-shell-'));
+  // Keep the preceding version as an additional rollback safety net.
+  await Promise.all(keys.filter(key => key !== shellCache).slice(0, -1).map(key => caches.delete(key)));
+  await self.clients.claim();
+})()));
+self.addEventListener('fetch', event => {
+  const request = event.request, url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || request.headers.has('Authorization')) return;
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).catch(async () => (await caches.open(shellCache)).match('/index.html')));
+  } else if (shellFiles.includes(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(shellCache), cached = await cache.match(url.pathname);
+      return cached || fetch(request);
+    })());
+  }
+});
 self.addEventListener('push', event => {
   let data = {}; try { data = event.data?.json() || {}; } catch { /* A visible generic notification is still required. */ }
   let url = new URL('/?reminder=study', self.location.origin);

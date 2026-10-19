@@ -11,9 +11,16 @@ import ContentSkeleton from "./components/ContentSkeleton";
 import AppWelcome from "./components/AppWelcome";
 import NotificationsScreen from "./components/preferences/NotificationsScreen";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
+import DownloadScreen from './components/library/DownloadScreen';
+import StorageScreen from './components/preferences/StorageScreen';
+import QuestionReportsScreen from './components/preferences/QuestionReportsScreen';
+import { downloadManifest } from '../services/downloads';
+import { syncQuestionReports } from '../services/questionReports';
+import { queueAnalytics, syncAnalytics, analyticsSynced } from '../services/analyticsOutbox';
+import { learningProgress, questionIdentity } from '../services/learningProgress';
 import { syncStudyHistory, syncReminderDeviceOwner } from "../services/reminders";
 import { readPracticeHistory, rememberPractice, cachePracticeHistory, syncPracticeHistory, mergePracticeHistory, type PracticeSummary } from "../services/practiceHistory";
-import { createAttempt, saveCheckpoint, completeAttempt, claimAttempt, readAttempt, listAttempts, listBookmarks, bookmarkKey, saveBookmark, removeBookmark, discardAttempt, attemptSummary, type SavedAttempt, type SavedBookmark } from '../services/practiceArchive';
+import { createAttempt, saveCheckpoint, completeAttempt, claimAttempt, readAttempt, listAttempts, listBookmarks, bookmarkKey, saveBookmark, saveBookmarkNote, removeBookmark, discardAttempt, attemptSummary, type SavedAttempt, type SavedBookmark } from '../services/practiceArchive';
 import SavedQuestionsScreen from './components/library/SavedQuestionsScreen';
 import StudyHome from "./components/home/StudyHome";
 import DiscoverScreen from "./components/discover/DiscoverScreen";
@@ -50,7 +57,7 @@ type Screen =
   | "splash" | "signup" | "login" | "forgot-password" | "change-password" | "onboarding"
   | "home" | "snap" | "processing" | "review-questions" | "customize-cbt"
   | "exam" | "results" | "review-answers" | "preference" | "manual-entry"
-  | "saved-questions" | "profile-edit" | "practice-history" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
+  | "question-reports" | "downloads" | "settings-storage" | "saved-questions" | "profile-edit" | "practice-history" | "settings-preferences" | "settings-reminders" | "settings-notifications" | "about" | "support";
 type NavTab = "home" | "library" | "lead" | "preference";
 
 interface Q {
@@ -99,7 +106,7 @@ function sortQuestions(qs: Q[]): Q[] {
     const ob = b.orderIndex != null ? Number(b.orderIndex) : Number(b.id) || 0;
     return oa - ob;
   });
-  return list.map((q, i) => ({ ...q, id: i + 1, orderIndex: i + 1 }));
+  return list.map((q, i) => ({ ...q, id: q.id ?? i + 1, orderIndex: i + 1 }));
 }
 
 function practiceQuestionKey(sourceBundleId: string, question: Q, order: number): string {
@@ -265,7 +272,7 @@ function HomeScreen({
   return (
     <div className="study-shell">
       <div className="study-shell-content">
-        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" hasSaved={studyMaterials.length > 0} label="Loading your study room" fullPage /> : <StudyHome name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")}>{studyTools}</StudyHome>)}
+        {tab === "home" && (!offlineReady || !historyReady ? <ContentSkeleton kind="home" hasSaved={studyMaterials.length > 0} label="Loading your study room" fullPage /> : <StudyHome ownerId={ownerId} name={userName} materials={studyMaterials} sessions={studySessions} environmentName={focusedMaterials.length ? environmentFor(focusedMaterials[0]).name : undefined} onOpen={onOpenBundle} onLibrary={() => onTab("library")} onUpload={() => nav("snap")}>{studyTools}</StudyHome>)}
         {tab === "library" && (
           <PreparationLibrary
             key={reminderSearch}
@@ -822,6 +829,7 @@ export default function App() {
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
   const [libraryCatalog, setLibraryCatalog] = useState<LibraryCatalog | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [downloadTarget,setDownloadTarget]=useState<string|null>(null);
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
   const [restoringImages, setRestoringImages] = useState(false);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
@@ -841,6 +849,9 @@ export default function App() {
   const displaySessions = [...archivedSummaries, ...sessions.filter(session => !archivedIds.has(session.id))].sort((a, b) => (b.completed_at || b.created_at || '').localeCompare(a.completed_at || a.created_at || ''));
   const ongoingAttempt = savedAttempts.find(attempt => attempt.status === 'active');
   const visibleQuestion = activeQuestions[screen === 'review-answers' ? reviewQ : currentQ];
+  const visibleSource={bundleId:(visibleQuestion as any)?.sourceBundleId||practiceSource.bundleId,version:(visibleQuestion as any)?.sourceVersion||practiceSource.version};
+  const currentSavedQuestion=screen==='review-answers'?offlineLibrary.find(bundle=>bundle.id===visibleSource.bundleId)?.questions?.find((q:any)=>questionIdentity(q)===questionIdentity(visibleQuestion)):null;
+  const correctionAvailable=!!currentSavedQuestion&&!!visibleQuestion&&['correct','question','questionHtml','explanation','explanationHtml','answerText','answerHtml'].some(field=>(currentSavedQuestion as any)[field]!== (visibleQuestion as any)[field]);
   const currentBookmarkKey = bookmarkIdentity && bookmarkIdentity.question === visibleQuestion ? bookmarkIdentity.key : '';
   const bookmarked = !!currentBookmarkKey && savedQuestions.some(row => row.key === currentBookmarkKey);
 
@@ -853,7 +864,12 @@ export default function App() {
     const known = new Set((await readPracticeHistory(owner)).map(row => row.id));
     if (authenticatedUser.current !== owner) return;
     for (const attempt of attempts) if (attempt.status === 'completed' && !known.has(attempt.id)) await rememberPractice(owner, { ...attemptSummary(attempt), pending: true });
-    if (navigator.onLine) void syncPracticeHistory(owner).catch(() => {});
+    for (const attempt of attempts) if (attempt.status === 'completed' && !await analyticsSynced(owner,attempt.id)) {
+      const {paper}=await readAttempt(owner,attempt.id);
+      await queueAnalytics({id:attempt.id,completedAt:attempt.completedAt,userId:owner,sourceBundleId:attempt.source.bundleId,sourceBundleVersion:attempt.source.version,durationSeconds:attempt.timeTaken||0,score:attempt.score||0,
+        attempts:paper.questions.map((q,index)=>({questionKey:practiceQuestionKey(attempt.source.bundleId,q as Q,index),topicKey:[q.sourceBundleId||attempt.source.bundleId,q.subject,q.topic||q.section||'general'].join(':'),selectedOptionIndex:q.type==='theory'||q.type==='short_answer'?null:attempt.answers[index],answered:attempt.answers[index]!=null,isCorrect:answerIndex(q)===null||attempt.answers[index]==null?null:attempt.answers[index]===answerIndex(q),attemptOrder:index}))});
+    }
+    if (navigator.onLine) { void syncPracticeHistory(owner).catch(() => {}); void syncAnalytics(owner).catch(() => {}); }
   }
   useEffect(() => {
     currentAttempt.current = null; setSavedAttempts([]); setSavedQuestions([]); setStorageError(''); setArchiveReady(false);
@@ -883,7 +899,7 @@ export default function App() {
   useEffect(() => {
     let active = true;
     setBookmarkIdentity(null);
-    if (visibleQuestion && (screen === 'exam' || screen === 'review-answers')) void bookmarkKey(practiceSource, visibleQuestion).then(key => { if (active) setBookmarkIdentity({ question: visibleQuestion, key }); }).catch(() => {});
+    if (visibleQuestion && (screen === 'exam' || screen === 'review-answers')) void bookmarkKey(visibleSource, visibleQuestion).then(key => { if (active) setBookmarkIdentity({ question: visibleQuestion, key }); }).catch(() => {});
     return () => { active = false; };
   }, [visibleQuestion, practiceSource, screen]);
 
@@ -910,7 +926,7 @@ export default function App() {
     setBookmarkBusy(true);
     try {
       if (bookmarked) await removeBookmark(owner, currentBookmarkKey);
-      else await saveBookmark(owner, { title: customizeBundle?.title || 'Saved question', source: practiceSource, question: visibleQuestion, assets: customizeBundle?.assets || {}, answer: answers[screen === 'review-answers' ? reviewQ : currentQ] ?? null });
+      else await saveBookmark(owner, { title: customizeBundle?.title || 'Saved question', source: visibleSource, question: visibleQuestion, assets: customizeBundle?.assets || {}, answer: answers[screen === 'review-answers' ? reviewQ : currentQ] ?? null });
       await refreshArchive(owner);
     } catch { if (authenticatedUser.current === owner) setStorageError('This question could not be saved. Check device storage and try again.'); }
     finally { setBookmarkBusy(false); }
@@ -924,7 +940,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) { void syncStudyHistory([], owner).catch(() => {}); void syncPracticeHistory(owner).catch(() => {}); } };
+    const flush = () => { const owner = authenticatedUser.current; if (owner && !document.hidden) { void syncStudyHistory([], owner).catch(() => {}); void syncPracticeHistory(owner).catch(() => {}); void syncAnalytics(owner).catch(() => {}); void syncQuestionReports(owner).catch(() => {}); } };
     window.addEventListener('online', flush); document.addEventListener('visibilitychange', flush);
     return () => { window.removeEventListener('online', flush); document.removeEventListener('visibilitychange', flush); };
   }, []);
@@ -991,11 +1007,7 @@ export default function App() {
     try {
       const ownerId = authenticatedUser.current;
       let bundle = await getOfflineBundle(mfg.bundleId, ownerId || undefined);
-      if (!bundle?.questions?.length) {
-        bundle = await getBundleFromApi(mfg.bundleId);
-        await saveBundle(bundle);
-        await refreshOfflineLibrary();
-      }
+      if (!bundle?.questions?.length) { setDownloadTarget(mfg.bundleId);setScreen('downloads');return; }
       if (!bundle?.questions?.length) {
         alert("This material has no questions yet.");
         return;
@@ -1101,21 +1113,15 @@ export default function App() {
         alert("This download has no saved questions yet. Re-extract or re-download it.");
         return;
       }
-      setCustomizeBundle({ ...fresh, questions: qs });
+      setCustomizeBundle({ ...fresh, questions: qs, suggestion:bundle.suggestion });
       if (preparation.enabled) changePreparation({ ...preparation, activeEnvironment: environmentFor(fresh).id });
       setScreen("customize-cbt");
       if (fresh === original && navigator.onLine && !fresh.sourceSessionId && (fresh.manufacturer || fresh.university || fresh.examType)) {
         // Background revalidation: offline copy may predate server additions.
         // Refresh newer content even when its question count is unchanged.
-        getBundleFromApi(bundle.id)
-          .then(async (live: any) => {
-            const liveQs = Array.isArray(live?.questions) ? live.questions : [];
-            if (liveQs.length > qs.length || Date.parse(live.updatedAt || '') > Date.parse(fresh.updatedAt || '')) {
-              const saved = await saveBundle(live);
-              await refreshOfflineLibrary();
-            }
-          })
-          .catch(() => {});
+        downloadManifest(bundle.id).then(manifest=>{
+          if(Date.parse(manifest.version)>Date.parse(fresh.updatedAt||fresh.updated_at||''))setCustomizeBundle((previous:any)=>previous?.id===fresh.id?{...previous,updateAvailable:true}:previous);
+        }).catch(()=>{});
       }
     } catch (e) {
       console.error(e);
@@ -1123,16 +1129,7 @@ export default function App() {
     } finally { setRestoringImages(false); }
   };
 
-  const handleDownloadBundle = async (bundle: any) => {
-    try {
-      await downloadBundle(bundle.id);
-      await refreshOfflineLibrary();
-      alert("Downloaded for offline use.");
-    } catch (e) {
-      console.error(e);
-      alert("Download failed. Check your connection.");
-    }
-  };
+  const handleDownloadBundle = async (bundle: any) => { setDownloadTarget(bundle.id);setScreen('downloads'); };
 
   useEffect(() => {
     refreshGlobalLibrary().catch(() => {});
@@ -1201,8 +1198,8 @@ export default function App() {
           return prev;
         });
         let profile = null;
-        try { profile = await getUserProfile(user.id); } catch {}
-        if (!profile) {
+        try { if (navigator.onLine) profile = await getUserProfile(user.id); } catch {}
+        if (!profile && navigator.onLine) {
           try { profile = await createUserProfile(user.id, user.email || "", user.user_metadata?.full_name || ""); } catch {}
         }
         if (!active || request !== revision || authenticatedUser.current !== user.id) return;
@@ -1215,7 +1212,7 @@ export default function App() {
         } catch {}
         // Fetch global library from the Hostinger API.
         try {
-          await refreshGlobalLibrary();
+          if (navigator.onLine) await refreshGlobalLibrary();
         } catch {}
       } else {
         setHistoryReady(true);
@@ -1304,13 +1301,14 @@ export default function App() {
         const durationSeconds = completed.timeTaken || 0;
         const attempts = activeQuestions.map((question, index) => ({
           questionKey: practiceQuestionKey(practiceSource.bundleId, question, index),
-          topicKey: question.subject || "general",
+          topicKey: [(question as any).sourceBundleId||practiceSource.bundleId, question.subject, question.topic || question.section || "general"].join(":"),
           selectedOptionIndex: question.type === 'short_answer' || question.type === 'theory' ? null : answers[index],
           answered: answers[index] !== null,
           isCorrect: answerIndex(question) === null || answers[index] == null ? null : answers[index] === answerIndex(question),
           attemptOrder: index,
         }));
-        await savePracticeResult({
+        await queueAnalytics({
+          id: completed.id, completedAt: completed.completedAt,
           userId,
           sourceBundleId: practiceSource.bundleId,
           sourceBundleVersion: practiceSource.version,
@@ -1318,6 +1316,7 @@ export default function App() {
           score: s,
           attempts,
         });
+        void syncAnalytics(userId).catch(() => {});
         // Best-effort anonymous cohort signal. Student progress is already
         // durably stored in Supabase above; this request holds no user id.
         void recordAnonymousAttemptSummary(attempts.map(({ questionKey, isCorrect }) => ({ questionKey, isCorrect })))
@@ -1340,6 +1339,7 @@ export default function App() {
   const handleWrittenAnswer = (qi: number, text: string) => {
     if (submitted.current) return;
     setWrittenAnswers(previous => { const next = [...previous]; next[qi] = text; return next; });
+    if (activeQuestions[qi]?.type === 'theory') return;
     setAnswers(previous => { const next = [...previous]; next[qi] = text.trim() ? 0 : null; return next; });
   };
 
@@ -1405,8 +1405,7 @@ export default function App() {
             if (!ownerId || !reviewMaterial?.id) throw new Error('Please sign in again to save this material.');
             const saved = await confirmVisionMaterial(reviewMaterial.id, activeQuestions);
             if (authenticatedUser.current !== ownerId) return;
-            const material = { ...saved, ownerId };
-            try { await saveBundle(material); } catch { /* The confirmed server copy remains available. */ }
+            const material = await saveBundle({ ...saved, ownerId });
             if (authenticatedUser.current !== ownerId) return;
             setCustomizeBundle(material);
             setScreen('customize-cbt');
@@ -1414,11 +1413,16 @@ export default function App() {
           }}
         />
       );
+      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget} id={downloadTarget} onBack={()=>handleNavTab('library')} onSaved={bundle=>{void refreshOfflineLibrary();void openBundle(bundle);}}/>:null;
+      case "question-reports": return <QuestionReportsScreen key={userId} owner={userId} onBack={()=>nav('preference')} onUpdate={id=>{setDownloadTarget(id);setScreen('downloads');}}/>;
+      case "settings-storage": return <StorageScreen key={userId} owner={userId} onBack={()=>nav('preference')} onChange={async()=>{await refreshOfflineLibrary();await refreshArchive(userId);setSessions(await readPracticeHistory(userId));}} onUpdate={bundle=>{setDownloadTarget(bundle.id);setScreen('downloads');}}/>;
       case "customize-cbt": return customizeBundle ? (
         <CustomizeCbtScreen
           key={String(customizeBundle.id || "bundle")}
           bundle={customizeBundle}
           ownerId={userId}
+          onUpdateMaterial={()=>{setDownloadTarget(customizeBundle.id);setScreen('downloads');}}
+          onOpenQuestion={question=>openSavedQuestion({key:'search',owner:userId,title:customizeBundle.title,source:{bundleId:customizeBundle.id,version:customizeBundle.updatedAt||customizeBundle.updated_at||null},question:question as any,assets:customizeBundle.assets||{},answer:null,createdAt:new Date().toISOString()})}
           onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
             const owner = userId;
@@ -1432,19 +1436,7 @@ export default function App() {
                 practiceKey: practiceQuestionKey(sourceBundleId, question as unknown as Q, sourceIndex >= 0 ? sourceIndex : index),
               };
             }) as unknown as Q[];
-            let recommended = ordered;
-            if (userId && mode === "practice") {
-              try {
-                const ranked = await rankRecommendationCandidates(userId, ordered.map((question, index) => ({
-                  question,
-                  questionKey: practiceQuestionKey(sourceBundleId, question, index),
-                  topicKey: question.subject || "general",
-                })));
-                recommended = ranked.map((item) => item.question);
-              } catch (error) {
-                console.warn("Could not personalise question order", error);
-              }
-            }
+            const recommended = ordered;
             if (!owner || authenticatedUser.current !== owner) throw new Error('Sign in again before starting.');
             const source = { bundleId: sourceBundleId, version: customizeBundle.updatedAt || customizeBundle.updated_at || null };
             let attempt: SavedAttempt;
@@ -1472,6 +1464,7 @@ export default function App() {
       ) : <PlaceholderScreen title="Material unavailable" nav={nav} backTo="home" />;
       case "exam": return (
         <StudyWorkspace
+          ownerId={userId} source={visibleSource}
           questions={activeQuestions}
           answers={answers} onAnswer={handleAnswer}
           writtenAnswers={writtenAnswers} onWrittenAnswer={handleWrittenAnswer} assets={customizeBundle?.assets}
@@ -1491,14 +1484,14 @@ export default function App() {
       }} onPracticeMissed={() => {
         const missed = activeQuestions.filter((q, i) => answerIndex(q) !== null && answers[i] !== answerIndex(q));
         if (!missed.length) return;
-        setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", questions: missed, assets: customizeBundle?.assets });
+        setCustomizeBundle({ id: practiceSource.bundleId, name: "Questions to revisit", revisionSet:true, questions: missed, assets: customizeBundle?.assets });
         setScreen("customize-cbt");
       }} />;
 
-      case "review-answers": return <StudyWorkspace bookmarked={bookmarked} bookmarkBusy={bookmarkBusy} onBookmark={currentBookmarkKey ? () => void toggleBookmark() : undefined} writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { if (destination === 'home' && reviewBack !== 'library') { nav(reviewBack === 'history' ? 'practice-history' : 'saved-questions'); return; } nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
-      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={displaySessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onNotifications={() => nav("settings-notifications")} onProgress={() => nav("practice-history")} onSavedQuestions={() => nav("saved-questions")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
+      case "review-answers": return <StudyWorkspace correctionAvailable={correctionAvailable} ownerId={userId} source={visibleSource} savedQuestionKeys={savedQuestions.map(row=>JSON.stringify([row.source.bundleId,questionIdentity(row.question)]))} onRetry={indexes=>{currentAttempt.current=null;setCustomizeBundle({id:practiceSource.bundleId,title:'Revision · '+(customizeBundle?.title||'Saved questions'),questions:indexes.map(index=>activeQuestions[index]),assets:customizeBundle?.assets||{},revisionSet:true});setScreen('customize-cbt');}} bookmarked={bookmarked} bookmarkBusy={bookmarkBusy} onBookmark={currentBookmarkKey ? () => void toggleBookmark() : undefined} writtenAnswers={writtenAnswers} assets={customizeBundle?.assets} questions={activeQuestions} answers={answers} flagged={flagged} currentQ={reviewQ} onQ={setReviewQ} onAnswer={() => {}} onFlag={() => {}} timeLeft={timeLeft} duration={examDuration} showModal={false} onModal={() => {}} onSubmit={() => {}} nav={destination => { if (destination === 'home' && reviewBack !== 'library') { nav(reviewBack === 'history' ? 'practice-history' : 'saved-questions'); return; } nav(destination); if (destination === 'home') setNavTab('library'); }} review />;
+      case "preference": return !historyReady ? <ContentSkeleton kind="preferences" hasActivity={sessions.length > 0} label="Loading your progress" fullPage /> : <div className="study-shell"><PreferencesScreen key={userId} ownerId={userId} name={userName} email={userEmail} avatar={userAvatar} sessions={displaySessions} preparationEnabled={preparation.enabled} onPreparation={enabled => changePreparation({ ...preparation, enabled })} theme={theme} onTheme={() => nav("settings-preferences")} onReminders={() => nav("settings-reminders")} onNotifications={() => nav("settings-notifications")} onProgress={() => nav("practice-history")} onSavedQuestions={() => nav("saved-questions")} onStorage={()=>nav("settings-storage")} onReports={()=>nav("question-reports")} onStudy={() => handleNavTab('home')} /><BottomNav tab={navTab} onTab={handleNavTab} onSnap={() => nav("snap")} /></div>;
       case "practice-history": return !historyReady || !archiveReady ? <ContentSkeleton kind="history" label="Loading past sessions" fullPage /> : <div className="study-shell practice-history-shell"><StudyProgress sessions={displaySessions} attempts={savedAttempts} onResume={id => void openSavedAttempt(id, true)} onReview={id => void openSavedAttempt(id, false)} onDiscard={async id => { await discardAttempt(userId, id); if (currentAttempt.current?.id === id) currentAttempt.current = null; await refreshArchive(userId); }} onBack={() => nav('preference')} onStart={() => handleNavTab('library')} /><BottomNav tab="preference" onTab={handleNavTab} onSnap={() => nav('snap')} /></div>;
-      case "saved-questions": return !archiveReady ? <ContentSkeleton kind="saved-questions" label="Loading saved questions" fullPage /> : <SavedQuestionsScreen bookmarks={savedQuestions} onOpen={openSavedQuestion} onRemove={async id => { try { await removeBookmark(userId, id); await refreshArchive(userId); } catch { setStorageError('This saved question could not be removed. Try again.'); } }} onBack={() => nav('preference')} />;
+      case "saved-questions": return !archiveReady ? <ContentSkeleton kind="saved-questions" label="Loading saved questions" fullPage /> : <SavedQuestionsScreen bookmarks={savedQuestions} onNote={async(key,note)=>{await saveBookmarkNote(userId,key,note);await refreshArchive(userId);}} onPractice={rows=>{if(!rows.length)return;setCustomizeBundle({id:'saved-questions',title:'Saved questions',questions:rows.map(row=>({...row.question,sourceBundleId:row.source.bundleId,sourceVersion:row.source.version,practiceKey:row.question.practiceKey||practiceQuestionKey(row.source.bundleId,row.question as Q,0)})),assets:Object.assign({},...rows.map(row=>row.assets)),revisionSet:true});setScreen('customize-cbt');}} onOpen={openSavedQuestion} onRemove={async id => { try { await removeBookmark(userId, id); await refreshArchive(userId); } catch { setStorageError('This saved question could not be removed. Try again.'); } }} onBack={() => nav('preference')} />;
       case "profile-edit": return <EditProfileScreen nav={nav} userName={userName} setUserName={setUserName} userEmail={userEmail} userAvatar={userAvatar} />;
       case "settings-preferences": return <ThemeScreen theme={theme} onTheme={setTheme} onBack={() => nav("preference")} />;
       case "settings-reminders": return <RemindersScreen key={userId} ownerId={userId} sessions={displaySessions} onBack={() => nav("preference")} />;

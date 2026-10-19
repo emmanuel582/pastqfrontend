@@ -177,7 +177,7 @@ export function filterByTopics(questions: CbtQuestion[], selectedTopics: string[
  * source answer after submission. They are not automatically marked as MCQs.
  */
 export function isCbtQuestion(q: { options?: unknown; type?: unknown; answerText?: unknown }): boolean {
-  return q.type === 'theory' || (q.type === 'short_answer' && typeof q.answerText === 'string' && !!q.answerText.trim())
+  return q.type === 'theory' || q.type === 'short_answer'
     || (Array.isArray(q.options) && q.options.length >= 2);
 }
 

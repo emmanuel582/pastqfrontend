@@ -26,7 +26,7 @@
 .student-chart-dates { display:flex; justify-content:space-between; padding-left:28px; color:var(--study-muted); font-size:11px; }
 .student-chart-empty { display:grid; place-items:center; min-height:110px; color:var(--study-muted); font-size:13px; text-align:center; }
 .student-settings-list { margin-top:24px; }
-.student-practice-links { margin:0 0 24px; }
+.student-practice-links { margin:18px 0 0; }
 .student-practice-links>button { min-height:64px; padding:12px 2px; }
 .student-settings-list>button { display:flex; align-items:center; gap:15px; min-height:72px; width:100%; padding:14px 2px; border:0; border-bottom:1px solid var(--study-line); text-align:left; background:transparent; color:var(--study-ink); }
 .student-settings-list>button:hover { background:rgba(var(--study-wash-rgb),.025); }

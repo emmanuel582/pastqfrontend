@@ -109,7 +109,9 @@ async function prepareReminderWorker() {
   const registration = await navigator.serviceWorker.register('/study-reminders-sw.js', { scope: '/', updateViaCache: 'none' });
   if (registration.active && !registration.installing && !registration.waiting && typeof registration.update === 'function') await registration.update();
   const worker = registration.installing || registration.waiting;
-  if (worker || !registration.active) await new Promise<void>((resolve, reject) => {
+  // A waiting shell update must not interrupt an exam in another tab. The
+  // current active worker can keep delivering notifications until tabs close.
+  if (!registration.active) await new Promise<void>((resolve, reject) => {
     if (!worker) { reject(new Error('Could not prepare notifications. Please try again.')); return; }
     const timer = setTimeout(() => { worker.removeEventListener('statechange', change); reject(new Error('Notifications took too long to start. Please try again.')); }, 15000);
     const change = () => { if (worker.state === 'activated') { clearTimeout(timer); worker.removeEventListener('statechange', change); resolve(); } else if (worker.state === 'redundant') { clearTimeout(timer); worker.removeEventListener('statechange', change); reject(new Error('Could not prepare notifications. Please try again.')); } };

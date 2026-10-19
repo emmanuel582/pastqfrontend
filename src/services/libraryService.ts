@@ -2,6 +2,7 @@ import localforage from "localforage";
 import { apiUrl } from "./api";
 import { UTME_BUNDLE_ID, isLegacyUtmeBundle } from "../utils/utme";
 import { bundleNeedsImageRepair } from '../utils/bundleMedia';
+import { preparePrivateMedia } from './protectedMedia';
 
 localforage.config({
   name: "PastQLibrary",
@@ -82,7 +83,7 @@ function normalizeBundle(raw: any) {
     ...parsedDesc,
     id: raw.id || raw.bundle_id || crypto.randomUUID(),
     title: raw.title || raw.name || "Untitled Material",
-    updatedAt: raw.updatedAt || raw.updated_at || null,
+    updatedAt: typeof (raw.updatedAt || raw.updated_at) === 'number' ? new Date(raw.updatedAt || raw.updated_at).toISOString() : raw.updatedAt || raw.updated_at || null,
     icon: raw.icon || "📚",
     questions,
     groups: raw.groups || parsedDesc?.groups || [],
@@ -125,14 +126,13 @@ export const getBundleFromApi = async (bundleId: string) => {
 };
 
 export const downloadBundle = async (bundleId: string) => {
-  const bundle = await getBundleFromApi(bundleId);
-  if (!bundle) throw new Error("Bundle not found");
-  await localforage.setItem(bundle.id, bundle);
-  return bundle;
+  const {downloadManifest,downloadSelected}=await import('./downloads');
+  const manifest=await downloadManifest(bundleId);
+  return downloadSelected(manifest,manifest.parts.map(part=>part.hash),saveBundle);
 };
 
 export const saveBundle = async (bundle: any) => {
-  const normalized = normalizeBundle(bundle);
+  const normalized = normalizeBundle(await preparePrivateMedia(bundle));
   if (!normalized) throw new Error("Invalid bundle");
   const key = normalized.sourceSessionId && normalized.ownerId ? `private:${normalized.ownerId}:${normalized.id}` : normalized.id;
   await localforage.setItem(key, normalized);
@@ -141,7 +141,8 @@ export const saveBundle = async (bundle: any) => {
 
 /** Restore incomplete public downloads before an exam, including equal-count updates. */
 export const ensureBundleImages = async (bundle: any, onRepair?: () => void) => {
-  if (bundle?.sourceSessionId || !bundleNeedsImageRepair(bundle)) return bundle;
+  if (bundle?.sourceSessionId) return saveBundle(await preparePrivateMedia(bundle));
+  if (!bundleNeedsImageRepair(bundle)) return bundle;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Connect once to restore the images in this saved material.');
   onRepair?.();
   try {
@@ -160,7 +161,7 @@ export const getOfflineLibrary = async (ownerId?: string) => {
     if (b && !b.sourceSessionId && !b.approvedAt && !b.manufacturer && !b.organization && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(b.id)) return;
     if (b && (!b.sourceSessionId || b.ownerId === ownerId)) bundles.push(b);
   });
-  const hasCompleteUtme = bundles.some(bundle => bundle.id === UTME_BUNDLE_ID && bundle.kind === 'utme-bank'
+  const hasCompleteUtme = bundles.some(bundle => bundle.id === UTME_BUNDLE_ID && bundle.kind === 'utme-bank' && !bundle.partialDownload
     && bundle.questions.length === bundle.sourceAudit?.questions && !bundleNeedsImageRepair(bundle));
   return bundles.filter(bundle => !hasCompleteUtme || !isLegacyUtmeBundle(bundle.id))
     .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
@@ -169,13 +170,15 @@ export const getOfflineLibrary = async (ownerId?: string) => {
 export const getOfflineBundle = async (bundleId: string, ownerId?: string) => {
   if (isLegacyUtmeBundle(bundleId)) {
     const combined = normalizeBundle(await localforage.getItem(UTME_BUNDLE_ID));
-    if (combined?.kind === 'utme-bank' && combined.questions.length === combined.sourceAudit?.questions && !bundleNeedsImageRepair(combined)) return combined;
+    if (combined?.kind === 'utme-bank' && !combined.partialDownload && combined.questions.length === combined.sourceAudit?.questions && !bundleNeedsImageRepair(combined)) return combined;
   }
   const raw = (ownerId && await localforage.getItem(`private:${ownerId}:${bundleId}`)) || await localforage.getItem(bundleId);
   if ((raw as any)?.sourceSessionId && (raw as any)?.ownerId !== ownerId) return null;
   return normalizeBundle(raw);
 };
 
-export const removeOfflineBundle = async (bundleId: string) => {
-  await localforage.removeItem(bundleId);
+export const removeOfflineBundle = async (bundleId: string, ownerId?:string) => {
+  const privateKey=ownerId?`private:${ownerId}:${bundleId}`:'';
+  if(privateKey&&await localforage.getItem(privateKey)) await localforage.removeItem(privateKey);
+  else await localforage.removeItem(bundleId);
 };

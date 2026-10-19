@@ -1,6 +1,7 @@
-export interface GradableQuestion { correct?: number | string | null; options: string[]; subject: string }
+export interface GradableQuestion { correct?: number | string | null; options: string[]; subject: string; type?:string }
 
 export function answerIndex(question: GradableQuestion): number | null {
+  if (question.type === 'theory' || question.type === 'short_answer') return null;
   if (question.correct == null || question.correct === '') return null;
   const index = Number(question.correct);
   return Number.isInteger(index) && index >= 0 && index < question.options.length ? index : null;

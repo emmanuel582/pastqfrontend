@@ -35,4 +35,8 @@ describe('independent subject setup', () => {
     expect(subjectQuestionCount(pool, { ...settings, count: '0' })).toBe(0);
     expect(buildSubjectSession([], { Math: pool }, { Math: settings }, false)).toEqual([]);
   });
+  it('keeps every chosen revision question when a set mixes dated papers and topic notes',()=>{
+    const pool=[question('paper','Biology','2020'),question('topic','Biology',null)];
+    expect(subjectPool(pool,{...defaultSubjectSettings(pool),studyBy:'topic',selectedSet:true,count:'all'})).toHaveLength(2);
+  });
 });

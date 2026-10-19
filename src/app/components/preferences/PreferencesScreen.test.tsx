@@ -9,6 +9,7 @@ describe('student preferences', () => {
     expect(html).toContain('75%'); expect(html).toContain('80%'); expect(html).toContain('Latest score 80 percent');
     expect(html).toContain('Theme'); expect(html).toContain('Study reminders'); expect(html).not.toMatch(/Sign [Oo]ut|FAQ|About PastQ|Preparing for|Study guide/); expect(html).not.toContain('radiogroup');
     expect(html).toContain('Past sessions'); expect(html).toContain('Saved questions'); expect(html).not.toContain('View sessions');
+    expect(html.indexOf('Your progress')).toBeLessThan(html.indexOf('Past sessions'));
   });
   it('does not invent a score or progress curve for a new student', () => {
     const html = renderToStaticMarkup(<PreferencesScreen {...props} sessions={[]} />);

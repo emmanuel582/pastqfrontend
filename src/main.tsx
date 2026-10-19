@@ -3,6 +3,14 @@ import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import ContentSkeleton from './app/components/ContentSkeleton';
 import './styles/index.css';
+import { registerOfflineApp } from './services/offlineApp';
+import 'katex/dist/katex.min.css';
+import katex from 'katex';
+import renderMathInElement from 'katex/dist/contrib/auto-render.mjs';
+
+window.katex = katex;
+window.renderMathInElement = renderMathInElement;
+void registerOfflineApp();
 
 const App = lazy(() => import('./app/App'));
 class AppLoadBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {

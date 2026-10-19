@@ -28,8 +28,8 @@ function Catalog() {
 }
 function Preferences({ hasActivity }: { hasActivity: boolean }) {
   return <div className="study-app student-preferences"><div className="study-topbar student-preferences-header"><Block width={125} height={24} /></div><div className="student-preferences-content"><div className="student-identity"><Block width={46} height={46} className="skeleton-circle" /><Copy /></div>
-    <div className="student-settings-list student-practice-links">{[0, 1].map(index => <div className="skeleton-setting" key={index}><Block width={34} height={34} /><Block width={140} height={16} /><Block width={14} height={14} /></div>)}</div>
     {hasActivity ? <div className="student-progress"><Block width={130} height={20} /><div className="student-stats">{[0, 1, 2].map(index => <div key={index}><Block width="60%" height={12} /><Block width="65%" height={34} className="skeleton-stat" /></div>)}</div><Block height={180} /></div> : <FirstStep profile />}
+    <div className="student-settings-list student-practice-links">{[0, 1].map(index => <div className="skeleton-setting" key={index}><Block width={34} height={34} /><Block width={140} height={16} /><Block width={14} height={14} /></div>)}</div>
     <div className="student-settings-list">{[0, 1, 2].map(index => <div className="skeleton-setting" key={index}><Block width={40} height={40} className="skeleton-thumbnail" /><Copy /><Block width={index === 2 ? 40 : 14} height={index === 2 ? 24 : 14} /></div>)}</div>
   </div></div>;
 }

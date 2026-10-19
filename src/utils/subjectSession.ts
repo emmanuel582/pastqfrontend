@@ -1,6 +1,8 @@
+import { questionIdentity } from '../services/learningProgress';
 import { isCbtQuestion, topicOf, type CbtQuestion } from './cbtFilters';
 
 export interface SubjectSettings {
+  selectedSet?:boolean;
   studyBy: 'paper' | 'topic';
   year: string;
   paper: string;
@@ -26,11 +28,11 @@ export function defaultSubjectSettings(questions: CbtQuestion[]): SubjectSetting
 /** A subject has its own paper and count; one subject cannot consume another's allocation. */
 export function subjectPool(questions: CbtQuestion[], settings: SubjectSettings): CbtQuestion[] {
   let pool = questions.filter(isCbtQuestion);
-  if (settings.studyBy === 'paper') {
+  if (!settings.selectedSet && settings.studyBy === 'paper') {
     if (!settings.year) return [];
     pool = pool.filter(question => calendarYear(question) === settings.year);
     if (settings.paper) pool = pool.filter(question => String(question.sourceSet || question.paper || '').trim() === settings.paper);
-  } else if (subjectYears(questions).length && questions.some(question => !calendarYear(question))) {
+  } else if (!settings.selectedSet && subjectYears(questions).length && questions.some(question => !calendarYear(question))) {
     // Preserve the undated topic bank alongside, rather than merge it into, annual papers.
     pool = pool.filter(question => !calendarYear(question));
   }
@@ -45,7 +47,7 @@ export function subjectQuestionCount(questions: CbtQuestion[], settings: Subject
   const count = settings.count === 'all' ? available : Number(settings.count);
   return Number.isSafeInteger(count) && count > 0 ? Math.min(count, available) : 0;
 }
-export function buildSubjectSession(subjects: string[], bySubject: Record<string, CbtQuestion[]>, settings: Record<string, SubjectSettings>, shuffle: boolean): CbtQuestion[] {
+export function buildSubjectSession(subjects: string[], bySubject: Record<string, CbtQuestion[]>, settings: Record<string, SubjectSettings>, shuffle: boolean, seen?: Set<string>): CbtQuestion[] {
   return subjects.flatMap(subject => {
     if (!settings[subject]) return [];
     const pool = [...subjectPool(bySubject[subject] || [], settings[subject])];
@@ -53,6 +55,7 @@ export function buildSubjectSession(subjects: string[], bySubject: Record<string
       const other = Math.floor(Math.random() * (index + 1));
       [pool[index], pool[other]] = [pool[other], pool[index]];
     }
+    if (seen) pool.sort((a,b)=>Number(seen.has(questionIdentity(a)))-Number(seen.has(questionIdentity(b))));
     return pool.slice(0, subjectQuestionCount(bySubject[subject] || [], settings[subject]));
   });
 }

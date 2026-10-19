@@ -15,7 +15,7 @@ export type SavedAttempt = {
   score?: number; gradedTotal?: number; timeTaken?: number;
 };
 export type Checkpoint = Pick<SavedAttempt, 'answers' | 'writtenAnswers' | 'flagged' | 'currentQ'>;
-export type SavedBookmark = { key: string; owner: string; title: string; source: PracticeSource; question: SavedQuestion; assets: SourceAssets; answer: number | null; createdAt: string };
+export type SavedBookmark = { key: string; owner: string; title: string; source: PracticeSource; question: SavedQuestion; assets: SourceAssets; answer: number | null; createdAt: string; note?: string };
 const papers = localforage.createInstance({ name: 'PastQStudent', storeName: 'practice_papers' });
 const attempts = localforage.createInstance({ name: 'PastQStudent', storeName: 'practice_attempts' });
 const bookmarks = localforage.createInstance({ name: 'PastQStudent', storeName: 'question_bookmarks' });
@@ -148,3 +148,4 @@ export function saveBookmark(owner: string, input: Omit<SavedBookmark, 'key' | '
   });
 }
 export function removeBookmark(owner: string, id: string) { return serial(owner, async () => { await bookmarks.removeItem(key(owner, id)); }); }
+export function saveBookmarkNote(owner:string,id:string,note:string){return serial(owner,async()=>{const row=await bookmarks.getItem<SavedBookmark>(key(owner,id));if(!row||row.owner!==owner)throw new Error('Saved question unavailable.');if(note.length>10000)throw new Error('Keep the note below 10,000 characters.');await bookmarks.setItem(key(owner,id),{...row,note});});}

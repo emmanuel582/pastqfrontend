@@ -5,7 +5,7 @@ export function bundleNeedsImageRepair(bundle: any): boolean {
   if (!Array.isArray(bundle?.questions) || !bundle.questions.length) return false;
   let references = 0;
   for (const question of bundle.questions) {
-    const fields = [question.questionHtml, ...(question.optionsHtml || []), question.explanationHtml, question.answerHtml];
+    const fields = [question.questionHtml, ...(question.optionsHtml || []), question.explanationHtml, question.answerHtml, question.passage];
     if (String(question.question || '').includes('[Illustration]') && !/<img\b/i.test(question.questionHtml || '') && !question.missingAssets?.length && !question.figures?.some((figure: any) => figure.url)) return true;
     for (const html of fields) {
       for (const match of String(html || '').matchAll(/pastq-asset:([a-f0-9]{64})/g)) {
@@ -19,6 +19,6 @@ export function bundleNeedsImageRepair(bundle: any): boolean {
   if (typeof expected === 'number' && expected !== references) return true;
   // The original complete UTME bank includes diagrams; older text-only copies
   // must be upgraded even when they contain the same number of questions.
-  if (bundle.id === UTME_BUNDLE_ID && (!Number.isInteger(expected) || expected <= 0 || !references)) return true;
+  if (bundle.id === UTME_BUNDLE_ID && !bundle.partialDownload && (!Number.isInteger(expected) || expected <= 0 || !references)) return true;
   return false;
 }

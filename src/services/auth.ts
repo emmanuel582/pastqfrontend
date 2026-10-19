@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { apiUrl } from "./api";
+import { offlineOwner, rememberOfflineOwner } from './offlineApp';
 
 export const registerUser = async (email: string, pass: string, name: string) => {
   const response = await fetch(apiUrl("/api/auth/signup"), {
@@ -61,6 +62,7 @@ export const loginWithGoogle = async () => {
 };
 
 export const logoutUser = async () => {
+  rememberOfflineOwner(null);
   try {
     await fetch(apiUrl("/api/auth/logout"), { method: "POST" });
   } catch {
@@ -79,10 +81,18 @@ export const sendPasswordReset = async (email: string) => {
 export const listenToAuth = (callback: (user: any, event?: string) => void) => {
   let active = true;
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  const cached = offlineOwner();
+  if (cached) queueMicrotask(() => { if (active) callback(cached, 'OFFLINE_SESSION'); });
   const { data } = supabase.auth.onAuthStateChange((event, session) => {
     // Supabase auth callbacks run while its auth lock is held. Profile reads
     // and token-refreshing requests must run after that callback returns.
-    const timer = setTimeout(() => { timers.delete(timer); if (active) callback(session?.user || null, event); }, 0);
+    const timer = setTimeout(() => {
+      timers.delete(timer); if (!active) return;
+      if (session?.user) rememberOfflineOwner(session.user);
+      if (event === 'SIGNED_OUT') rememberOfflineOwner(null);
+      if (!session?.user && event !== 'SIGNED_OUT' && offlineOwner()) return;
+      callback(session?.user || null, event);
+    }, 0);
     timers.add(timer);
   });
   return () => {

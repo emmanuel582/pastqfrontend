@@ -124,6 +124,7 @@ export const MathText: React.FC<MathTextProps> = ({ text, html, assets, zoomImag
 
     if (html) {
       el.replaceChildren(sourceHtmlFragment(html, assets));
+      renderKatex(el);
       if (zoomImages) for (const image of el.querySelectorAll('img')) {
         image.tabIndex = 0;
         image.setAttribute('role', 'button');

@@ -50,6 +50,8 @@ export type AttemptForStorage = {
  * ever sent to Supabase.
  */
 export const savePracticeResult = async (input: {
+  id: string;
+  completedAt?: string;
   userId: string;
   sourceBundleId: string;
   sourceBundleVersion?: string | null;
@@ -57,11 +59,12 @@ export const savePracticeResult = async (input: {
   score: number;
   attempts: AttemptForStorage[];
 }) => {
-  const completedAt = new Date().toISOString();
+  const completedAt = input.completedAt || new Date().toISOString();
   const answeredCount = input.attempts.filter((attempt) => attempt.answered ?? attempt.selectedOptionIndex != null).length;
   const { data: practice, error: practiceError } = await supabase
     .from("practice_sessions")
-    .insert({
+    .upsert({
+      id: input.id,
       user_id: input.userId,
       source_bundle_id: input.sourceBundleId,
       source_bundle_version: input.sourceBundleVersion || null,
@@ -73,12 +76,13 @@ export const savePracticeResult = async (input: {
       status: "completed",
       completed_at: completedAt,
       question_keys: input.attempts.map((attempt) => attempt.questionKey),
-    })
+    }, { onConflict: 'id' })
     .select("id")
     .single();
   if (practiceError) throw practiceError;
 
-  const { error: attemptsError } = await supabase.from("question_attempts").insert(
+  // The schema's session/question unique key makes retries safe after a crash.
+  const { error: attemptsError } = await supabase.from("question_attempts").upsert(
     input.attempts.map((attempt) => ({
       user_id: input.userId,
       practice_session_id: practice.id,
@@ -87,7 +91,7 @@ export const savePracticeResult = async (input: {
       selected_option_index: attempt.selectedOptionIndex,
       is_correct: attempt.isCorrect,
       attempt_order: attempt.attemptOrder,
-    }))
+    })), { onConflict: 'practice_session_id,question_key' }
   );
   if (attemptsError) throw attemptsError;
 
@@ -101,19 +105,17 @@ export const savePracticeResult = async (input: {
   }
   const topicKeys = [...topicDeltas.keys()];
   if (topicKeys.length) {
-    const { data: existing, error: existingError } = await supabase
-      .from("student_topic_mastery")
-      .select("topic_key, attempts, correct")
-      .eq("user_id", input.userId)
-      .in("topic_key", topicKeys);
-    if (existingError) throw existingError;
-    const previous = new Map((existing || []).map((row) => [row.topic_key, row]));
+    const totals = new Map<string,{attempts:number;correct:number}>();
+    // Recompute from persisted outcomes rather than incrementing on every retry.
+    for(let offset=0;;offset+=1000){
+      const {data,error}=await supabase.from('question_attempts').select('topic_keys,is_correct').eq('user_id',input.userId).order('id').range(offset,offset+999);
+      if(error)throw error;
+      for(const row of data||[])if(row.is_correct!==null)for(const key of row.topic_keys||[]){const total=totals.get(key)||{attempts:0,correct:0};total.attempts++;if(row.is_correct)total.correct++;totals.set(key,total);}
+      if((data||[]).length<1000)break;
+    }
     const now = new Date().toISOString();
     const masteryRows = topicKeys.map((topicKey) => {
-      const before = previous.get(topicKey) || { attempts: 0, correct: 0 };
-      const delta = topicDeltas.get(topicKey)!;
-      const attempts = before.attempts + delta.attempts;
-      const correct = before.correct + delta.correct;
+      const {attempts,correct}=totals.get(topicKey)||{attempts:0,correct:0};
       return {
         user_id: input.userId,
         topic_key: topicKey,
@@ -132,11 +134,9 @@ export const savePracticeResult = async (input: {
     if (masteryError) throw masteryError;
   }
 
-  await supabase.from("learning_events").insert({
-    user_id: input.userId,
-    event_name: "practice_completed",
-    event_data: { practiceSessionId: practice.id, sourceBundleId: input.sourceBundleId, answeredCount },
-  });
+  const {data:events,error:lookupError}=await supabase.from('learning_events').select('id').eq('user_id',input.userId).eq('event_name','practice_completed').contains('event_data',{practiceSessionId:practice.id}).limit(1);
+  if(lookupError)throw lookupError;
+  if(!events?.length){const {error}=await supabase.from('learning_events').insert({user_id:input.userId,event_name:'practice_completed',event_data:{practiceSessionId:practice.id,sourceBundleId:input.sourceBundleId,answeredCount}});if(error)throw error;}
 
   return practice.id;
 };
