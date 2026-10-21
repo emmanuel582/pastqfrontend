@@ -2,6 +2,8 @@
 
 Broad Explore categories only expand their contents, with no download action or border around the opened category. Download actions belong to specific institutions, exam collections and individual materials. The themed dialog offers **All subjects** (start immediately) or **Choose subjects** (choose collections, subjects and individual source papers). Closing the dialog starts no download.
 
+An opened category takes the first visible position and hides its sibling category cards. Its heading remains the collapse control; closing restores the complete category list in its original order. Opening or closing scrolls back to the category heading, respecting reduced motion. Searches spanning multiple categories retain all matching groups until a student explicitly chooses one.
+
 The picker owns a bounded scrolling region and a separate footer. Long subject lists and paper lists support touch, mouse and keyboard scrolling while the download action stays visible. Multiple collections keep their own bundle identities, publishers, embedded diagrams and offline records. Verified download parts and completed collection commits are reused on retry.
 
 Downloading replaces the picker with an animated Scholar progress screen, with pause, resume and selection changes. Completion stays on a receipt with **Keep browsing** and **View saved materials**. A download never starts exam setup automatically, including partial and single-collection downloads. Keep browsing returns to Explore even when preparation mode is enabled. Explore has no track dropdown. The choice dialog explains both options briefly.

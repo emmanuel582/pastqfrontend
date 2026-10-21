@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, BookOpen, Building2, GraduationCap, Landmark, ShieldCheck, Download } from 'lucide-react';
 import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 import ContentSkeleton from '../ContentSkeleton';
@@ -13,6 +13,7 @@ function category(type?: string): Filter { return ['university', 'polytechnic', 
 
 export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onDownloadMaterials, onFlatBrowse, status = 'ready', onRetry }: Props) {
   const id = useId();
+  const gallery = useRef<HTMLDivElement>(null);
   function download(title:string,materials:CatalogManufacturer[]){const ids=[...new Set(materials.map(material=>material.bundleId).filter(Boolean))];if(ids.length)onDownloadMaterials?.({title,ids});}
   function downloadButton(title:string,materials:CatalogManufacturer[],label=`Download ${title}`){return onDownloadMaterials&&materials.length>0?<button type="button" className="icon-button catalog-download" aria-label={label} onClick={()=>download(title,materials)}><Download size={19}/></button>:null;}
   const raw = catalog.organizations?.length ? catalog.organizations : catalog.universities || [];
@@ -35,8 +36,10 @@ export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onD
     const open = choice.query === needle ? choice.category === item.id : !!needle && !!(rows.length || papers.length);
     return { ...item, rows, papers, open };
   });
-  return <div className="catalog-browser"><div className="category-gallery" role="group" aria-label="Browse materials by category">{sections.map(item => <section key={item.id} className={`category-group${item.open ? ' is-open' : ''}`}>
-    <div className="category-header"><button id={`${id}-${item.id}-toggle`} className={`category-tile ${item.open ? 'selected' : ''}`} aria-expanded={item.open} aria-controls={`${id}-${item.id}-panel`} onClick={() => { setChoice({ query: needle, category: item.open ? null : item.id }); }}><StudyArt type={item.id} /><span className="category-label"><strong>{item.title}</strong></span>{item.open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}</button></div>
+  const opened = sections.filter(item => item.open);
+  const focused = opened.length === 1 ? opened[0].id : null;
+  return <div className="catalog-browser"><div ref={gallery} className="category-gallery" role="group" aria-label="Browse materials by category">{sections.map(item => <section key={item.id} className={`category-group${item.open ? ' is-open' : ''}`} hidden={focused !== null && focused !== item.id}>
+    <div className="category-header"><button id={`${id}-${item.id}-toggle`} className={`category-tile ${item.open ? 'selected' : ''}`} aria-expanded={item.open} aria-controls={`${id}-${item.id}-panel`} onClick={() => { setChoice({ query: needle, category: item.open ? null : item.id }); requestAnimationFrame(() => gallery.current?.scrollIntoView?.({ block: 'start', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })); }}><StudyArt type={item.id} /><span className="category-label"><strong>{item.title}</strong></span>{item.open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}</button></div>
     <div id={`${id}-${item.id}-panel`} className="category-panel" role="region" aria-labelledby={`${id}-${item.id}-toggle`} hidden={!item.open}>{item.open && <>
       {item.rows.map(org => {
         const expandedKey = JSON.stringify([needle, org.id]);

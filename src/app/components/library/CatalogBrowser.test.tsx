@@ -53,7 +53,7 @@ describe('Browse category accordions', () => {
     expect(container.querySelector('button button')).toBeNull();
     expect(select).not.toHaveBeenCalled();
   });
-  it('opens content immediately inside its category and collapses the previous category', async () => {
+  it('focuses the opened category and restores the original category list on close', async () => {
     await render();
     const school = categoryButton('Schools & universities'), exams = categoryButton('Tests & qualifications');
     expect(school.getAttribute('aria-expanded')).toBe('false');
@@ -62,13 +62,29 @@ describe('Browse category accordions', () => {
     expect(panel(school).parentElement).toBe(school.closest(".category-group"));
     expect(panel(school).textContent).toContain('University of Ibadan');
     expect(panel(school).textContent).not.toContain('WAEC');
+    expect(exams.closest<HTMLElement>('.category-group')!.hidden).toBe(true);
+    expect(container.querySelectorAll('.category-group:not([hidden])')).toHaveLength(1);
+    await click(school);
+    expect(container.querySelectorAll('.category-group:not([hidden])')).toHaveLength(4);
     await click(exams);
     expect(panel(school).hidden).toBe(true);
     expect(panel(exams).hidden).toBe(false);
     expect(panel(exams).textContent).toContain('WAEC');
+    expect(container.querySelector('.category-group:not([hidden])')).toBe(exams.closest('.category-group'));
     await click(exams);
     expect(panel(exams).hidden).toBe(true);
+    expect([...container.querySelectorAll('.category-group:not([hidden]) .category-tile')].map(button=>button.textContent)).toEqual(['Schools & universities','Tests & qualifications','Professional study','Other materials']);
     expect(container.querySelector('.organization-toggle')).toBeNull();
+  });
+  it('keeps matches across categories visible while searching until a category is explicitly chosen', async()=>{
+    await render('biology');
+    expect(container.querySelectorAll('.category-group.is-open:not([hidden])')).toHaveLength(3);
+    const exams=categoryButton('Tests & qualifications');
+    await click(exams);await click(exams);
+    expect(container.querySelectorAll('.category-group:not([hidden])')).toHaveLength(1);
+    expect(exams.closest<HTMLElement>('.category-group')!.hidden).toBe(false);
+    await render('ibadan');
+    expect(categoryButton('Schools & universities').closest<HTMLElement>('.category-group')!.hidden).toBe(false);
   });
   it('keeps material selection connected to the correct exam and organization', async () => {
     await render(); await click(categoryButton('Tests & qualifications'));
