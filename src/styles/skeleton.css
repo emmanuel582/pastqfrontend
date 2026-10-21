@@ -72,5 +72,7 @@
 .scholar-sprite[data-loaded="false"] { opacity:1; }
 .scholar-sprite[data-loaded="false"]>.scholar-pose { opacity:0!important; }
 .skeleton-silhouette.skeleton-character { border-radius:0; overflow:visible; }
+.study-app .exam-artwork-official:has(>.ready-image[data-state="pending"]),.catalog-browser .exam-artwork-official:has(>.ready-image[data-state="pending"]) { background:transparent; border-color:transparent; }
+.exam-artwork .image-skeleton.skeleton-silhouette { padding:5px; }
 @keyframes skeleton-shape-pulse { 50% { opacity:.55; } }
 @media(prefers-reduced-motion:reduce) { .skeleton-silhouette,.skeleton-vector { animation:none; } }

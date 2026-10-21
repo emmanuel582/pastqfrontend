@@ -12,10 +12,12 @@ def simplify(points,tolerance=.65):
  index=max(range(1,len(points)-1),key=lambda i:distance(points[i]))
  if distance(points[index])<=tolerance:return [a,b]
  return simplify(points[:index+1],tolerance)[:-1]+simplify(points[index:],tolerance)
-def trace(image):
+def trace(image,foreground=False):
  image=image.convert('RGBA');image.thumbnail((256,256),Image.Resampling.LANCZOS)
  alpha=image.getchannel('A');w,h=image.size
- filled={(x,y) for y in range(h) for x in range(w) if alpha.getpixel((x,y))>24}
+ # Official logos include an opaque white presentation card. Trace their ink,
+ # while character silhouettes retain all clothing and skin alpha.
+ filled={(x,y) for y in range(h) for x in range(w) if alpha.getpixel((x,y))>24 and (not foreground or min(image.getpixel((x,y))[:3])<220)}
  edges={}
  def edge(a,b):edges.setdefault(a,[]).append(b)
  for x,y in sorted(filled):
@@ -38,7 +40,7 @@ def trace(image):
   paths.append('M'+'L'.join(f'{x},{y}' for x,y in points)+'Z')
  return {'viewBox':f'0 0 {w} {h}','path':''.join(paths)}
 sources={'jamb':'images/exams/jamb.png','waec':'images/exams/waec.png','pastq':'pastq-icon-192.png','scholar-wave':'pets/scholar/wave.png','scholar-account':'pets/scholar/67.webp'}
-shapes={key:trace(Image.open(root/'public'/name)) for key,name in sources.items()}
+shapes={key:trace(Image.open(root/'public'/name),foreground=key in ['jamb','waec']) for key,name in sources.items()}
 shapes['scholar-wave']['viewBox']='42 0 108 208'
 atlas=Image.open(root/'public/pets/scholar/spritesheet.webp')
 for name,(row,column) in {'idle':(0,0),'study':(8,1),'thinking':(7,0),'waiting':(6,2),'encourage':(5,5),'celebrate':(8,5)}.items():
