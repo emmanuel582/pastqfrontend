@@ -33,6 +33,17 @@
 .builder-field { width:100%; display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:84px; padding:18px 0; border:0; border-bottom:1px solid var(--study-line); font-size:14px; }
 .builder-field select { max-width:65%; min-width:130px; text-overflow:ellipsis; }
 .builder-field .duration-input { max-width:170px; }
+.builder-time { border:0; border-bottom:1px solid var(--study-line); margin:0; padding:24px 0; min-width:0; }
+.builder-time legend { float:left; width:100%; font-size:14px; padding:0; margin-bottom:16px; }
+.builder-time-fields { display:flex; align-items:center; gap:12px; clear:both; }
+.builder-time-fields>label { display:grid; flex:1; min-width:0; gap:8px; }
+.builder-time-fields label>span { font-size:12px; color:var(--study-muted); }
+.builder-time-fields>span { padding-top:22px; color:var(--study-muted); }
+.builder-time-fields input,.question-count-input input { width:100%; min-width:0; min-height:48px; padding:12px; border:1px solid var(--study-line); border-radius:8px; background:var(--study-control); color:var(--study-ink); font:500 20px 'Outfit','Manrope',sans-serif; font-variant-numeric:tabular-nums; }
+.question-count-input { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0; }
+.question-count-input input { max-width:90px; font-size:18px; }
+.question-count-input button { min-height:44px; padding:8px; background:transparent; color:var(--study-accent); border:0; font-size:12px; white-space:nowrap; }
+.question-count-input button[aria-pressed="true"] { text-decoration:underline; text-underline-offset:4px; }
 .field-button { background:transparent; color:var(--study-ink); text-align:left; }
 .field-button>strong { margin-left:auto; font-size:13px; font-weight:500; color:var(--study-muted); }
 .field-button>svg { color:var(--study-muted); }

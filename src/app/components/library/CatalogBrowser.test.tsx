@@ -21,6 +21,15 @@ beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; containe
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 
 describe('Browse category accordions', () => {
+  it('restores the parent download when collapsing a search-expanded institution', async () => {
+    await act(async()=>root.render(<CatalogBrowser catalog={catalog} search="Ibadan" onSelectManufacturer={select} onDownloadMaterials={vi.fn()} />));
+    expect(container.querySelector('.organization-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('button[aria-label="Download University of Ibadan"]')).toBeNull();
+    await click(container.querySelector('.organization-toggle')!);
+    expect(container.querySelector('.organization-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('button[aria-label="Download University of Ibadan"]')).not.toBeNull();
+    expect(container.querySelector('.catalog-material-row')).toBeNull();
+  });
   it('keeps downloads scoped to institutions, collections and materials instead of broad categories', async () => {
     const download = vi.fn();
     await act(async () => root.render(<CatalogBrowser catalog={catalog} onSelectManufacturer={select} onDownloadMaterials={download} />));
@@ -34,10 +43,13 @@ describe('Browse category accordions', () => {
     expect(download).toHaveBeenLastCalledWith({title:'University of Ibadan',ids:['ui-paper']});
     expect(container.querySelector('.organization-toggle')?.getAttribute('aria-expanded')).toBe('false');
     await click(container.querySelector('.organization-toggle')!);
-    await click(button('Download Post-UTME from University of Ibadan'));
-    expect(download).toHaveBeenLastCalledWith({title:'Post-UTME',ids:['ui-paper']});
+    expect(button('Download University of Ibadan')).toBeNull();
+    expect(button('Download Post-UTME from University of Ibadan')).toBeNull();
     await click(button('Download UI preparation'));
     expect(download).toHaveBeenLastCalledWith({title:'UI preparation',ids:['ui-paper']});
+    await click(container.querySelector('.organization-toggle')!);
+    expect(button('Download UI preparation')).toBeNull();
+    expect(button('Download University of Ibadan')).not.toBeNull();
     expect(container.querySelector('button button')).toBeNull();
     expect(select).not.toHaveBeenCalled();
   });
