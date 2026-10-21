@@ -5,6 +5,7 @@ import SkeletonShape from './SkeletonShape';
 
 export type { ScholarState } from '../../utils/scholarMotion';
 const SPRITE_URL = '/pets/scholar/spritesheet.webp';
+const openingTurn = (state: ScholarState) => state === 'waiting' || state === 'encourage' ? 1 : 0;
 
 function stillPose(state: ScholarState): ScholarFrame {
   // Curated from the supplied atlas: reading, reflection, patient waiting,
@@ -21,7 +22,7 @@ export default function ScholarMascot({ state = 'study', compact = false, animat
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [motion, setMotion] = useState<{ poses: [ScholarFrame, ScholarFrame]; active: 0 | 1 }>(() => {
-    const first = animated ? scholarMotion(state, 0)[0] : stillPose(state);
+    const first = animated ? scholarMotion(state, openingTurn(state))[0] : stillPose(state);
     return { poses: [first, first], active: 0 };
   });
   const intent = useRef(state);
@@ -52,7 +53,7 @@ export default function ScholarMascot({ state = 'study', compact = false, animat
     if (!loaded || failed || !animated) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let timer: ReturnType<typeof setTimeout>;
-    let turn = 0;
+    let turn = openingTurn(intent.current);
     let index = 0;
     let finished = false;
     let sequence = scholarMotion(intent.current, turn);

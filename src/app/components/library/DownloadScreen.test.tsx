@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 const state = vi.hoisted(() => ({ fail: false, calls: [] as string[] }));
+vi.mock('../ScholarMascot', () => ({ default: ({state}: {state: string}) => <div data-scholar-state={state} /> }));
 vi.mock('../../../services/libraryService', () => ({ getOfflineBundle: async () => null, saveBundle: async (bundle: any) => bundle }));
 vi.mock('../../../services/downloads', () => ({
   formatBytes: (n: number) => `${n} B`, savedDownloadSelection: () => [],
@@ -19,3 +20,13 @@ it('starts all subjects once after their manifests load', async () => { const sa
 it('waits for an explicit subject selection and keeps the bank identity', async () => { const saved = vi.fn(); await render({ onSaved: saved }); expect(state.calls).toEqual([]); expect([...host.querySelectorAll('button')].find(button => button.textContent?.includes('Save for offline'))?.disabled).toBe(true); await click('Download Biology'); await click('Save for offline'); expect(saved).toHaveBeenCalledWith(expect.objectContaining({ id: 'A', selected: ['ABiology'] }), 1); });
 it('can choose one publisher from an institution without downloading the other', async () => { const saved = vi.fn(); await render({ ids: ['A', 'B'], onSaved: saved }); await click('All subjects in Publisher B'); await click('Save for offline'); expect(state.calls).toEqual(['B']); expect(saved).toHaveBeenCalledWith(expect.objectContaining({ id: 'B' }), 1); });
 it('resumes a collection failure without committing successful banks a second time', async () => { state.fail = true; const saved = vi.fn(); await render({ ids: ['A', 'B'], mode: 'all', onSaved: saved }); expect(state.calls).toEqual(['A', 'B']); expect(saved).not.toHaveBeenCalled(); expect(host.textContent).toContain('Disconnected'); await click('Resume download'); expect(state.calls).toEqual(['A', 'B', 'B']); expect(saved).toHaveBeenCalledWith(expect.objectContaining({ id: 'B' }), 2); });
+it('keeps a partial download on its receipt until the student chooses where to go', async () => {
+  const saved=vi.fn(),back=vi.fn(),viewSaved=vi.fn();
+  await render({onSaved:saved,onBack:back,onViewSaved:viewSaved});
+  await click('Download Biology');await click('Save for offline');
+  expect(saved).toHaveBeenCalledTimes(1);expect(back).not.toHaveBeenCalled();expect(viewSaved).not.toHaveBeenCalled();
+  expect(host.textContent).toContain('Saved for offline');expect(host.querySelector('[data-scholar-state="celebrate"]')).not.toBeNull();
+  expect(host.querySelector('.download-subject')).toBeNull();
+  await click('Keep browsing');expect(back).toHaveBeenCalledTimes(1);
+  await click('View saved materials');expect(viewSaved).toHaveBeenCalledTimes(1);
+});

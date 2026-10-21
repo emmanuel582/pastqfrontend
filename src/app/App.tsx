@@ -262,7 +262,7 @@ function HomeScreen({
   onRetryLibrary: () => void;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
-  initialLibraryTab: 'browse' | 'downloaded';
+  initialLibraryTab: 'browse' | 'downloaded' | 'explore';
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
   preparation: Preparation;
   onPreparation: (value: Preparation) => void;
@@ -835,7 +835,7 @@ export default function App() {
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
   const [downloadTarget,setDownloadTarget]=useState<(DownloadScope & {mode:DownloadMode})|null>(null);
   const [downloadChoice,setDownloadChoice]=useState<DownloadScope|null>(null);
-  const [libraryStart,setLibraryStart]=useState<'browse'|'downloaded'>('browse');
+  const [libraryStart,setLibraryStart]=useState<'browse'|'downloaded'|'explore'>('browse');
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
   const [restoringImages, setRestoringImages] = useState(false);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
@@ -1255,6 +1255,7 @@ export default function App() {
 
   const handleNavTab = (t: NavTab) => {
     setReminderSearch('');
+    if (t !== 'library') setLibraryStart('browse');
     setNavTab(t);
     if (t === "preference") setScreen("preference");
     else setScreen("home");
@@ -1421,7 +1422,7 @@ export default function App() {
           }}
         />
       );
-      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget.ids.join(':')+downloadTarget.mode} id={downloadTarget.ids[0]} ids={downloadTarget.ids} title={downloadTarget.title} mode={downloadTarget.mode} onBack={()=>{void refreshOfflineLibrary();handleNavTab('library');}} onSaved={(bundle,count)=>{void refreshOfflineLibrary();if(count===1&&bundle)void openBundle(bundle);else{setLibraryStart('downloaded');changePreparation({...preparation,activeEnvironment:null});handleNavTab('library');}}}/>:null;
+      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget.ids.join(':')+downloadTarget.mode} id={downloadTarget.ids[0]} ids={downloadTarget.ids} title={downloadTarget.title} mode={downloadTarget.mode} onBack={()=>{void refreshOfflineLibrary();setLibraryStart('explore');handleNavTab('library');}} onSaved={()=>{void refreshOfflineLibrary();}} onViewSaved={()=>{setLibraryStart('downloaded');changePreparation({...preparation,activeEnvironment:null});handleNavTab('library');}}/>:null;
       case "question-reports": return <QuestionReportsScreen key={userId} owner={userId} onBack={()=>nav('preference')} onUpdate={id=>{setDownloadTarget({ids:[id],title:'Update material',mode:'select'});setScreen('downloads');}}/>;
       case "settings-storage": return <StorageScreen key={userId} owner={userId} onBack={()=>nav('preference')} onChange={async()=>{await refreshOfflineLibrary();await refreshArchive(userId);setSessions(await readPracticeHistory(userId));}} onUpdate={bundle=>{setDownloadTarget({ids:[bundle.id],title:bundle.title||'Update material',mode:'select'});setScreen('downloads');}}/>;
       case "customize-cbt": return customizeBundle ? (
@@ -1430,7 +1431,6 @@ export default function App() {
           bundle={customizeBundle}
           ownerId={userId}
           onUpdateMaterial={()=>{setDownloadTarget({ids:[customizeBundle.id],title:customizeBundle.title||'Update material',mode:'select'});setScreen('downloads');}}
-          onOpenQuestion={question=>openSavedQuestion({key:'search',owner:userId,title:customizeBundle.title,source:{bundleId:customizeBundle.id,version:customizeBundle.updatedAt||customizeBundle.updated_at||null},question:question as any,assets:customizeBundle.assets||{},answer:null,createdAt:new Date().toISOString()})}
           onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
             const owner = userId;

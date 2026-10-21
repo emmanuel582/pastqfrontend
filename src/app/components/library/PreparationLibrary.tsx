@@ -7,7 +7,7 @@ import { publisherName, savedEnvironments, type Preparation } from '../../../ser
 
 type Props = Parameters<typeof StudyLibrary>[0] & { preparation: Preparation; onPreparation: (value: Preparation) => void };
 export default function PreparationLibrary({ preparation, onPreparation, ...library }: Props) {
-  const [exploring, setExploring] = useState(false), [search, setSearch] = useState(library.initialSearch || '');
+  const [exploring, setExploring] = useState(library.initialTab === 'explore'), [search, setSearch] = useState(library.initialSearch || '');
   const environments = useMemo(() => savedEnvironments(library.offlineLibrary), [library.offlineLibrary]);
   const active = environments.find(environment => environment.id === preparation.activeEnvironment);
   const needle = search.trim().toLowerCase();

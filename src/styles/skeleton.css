@@ -19,7 +19,7 @@
 .student-practice-links .skeleton-setting { min-height:64px; padding:12px 2px; }
 .skeleton-timing { display:flex; gap:8px; margin:16px 0; }
 .skeleton-timing>.skeleton-block { flex:1; }
-.skeleton-builder-step { display:flex; align-items:center; justify-content:center; flex:1; gap:9px; min-height:42px; border-bottom:2px solid var(--study-line); }
+.skeleton-builder-step { display:flex; align-items:center; justify-content:center; flex:1; gap:9px; min-height:58px; border-bottom:2px solid var(--study-line); }
 .skeleton-builder .builder-subject { min-height:98px; }
 .skeleton-builder .skeleton-heading { margin:0; }
 .skeleton-builder .builder-footer .skeleton-copy { max-width:180px; }

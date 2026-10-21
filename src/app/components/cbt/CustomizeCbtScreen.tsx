@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Clock3, Pencil, Plus, Search, X } from 'lucide-react';
 import ScholarMascot from '../ScholarMascot';
-import LocalQuestionSearch from '../library/LocalQuestionSearch';
-import { learningProgress, questionIdentity } from '../../../services/learningProgress';
+import { learningProgress } from '../../../services/learningProgress';
 import StudyDialog from '../StudyDialog';
 import { customDurationSeconds, getAvailableSubjects, getAvailableTopics, isCbtQuestion, type CbtQuestion } from '../../../utils/cbtFilters';
 import { buildSubjectSession, calendarYear, defaultSubjectSettings, subjectPapers, subjectPool, subjectQuestionCount, subjectYears, type SubjectSettings } from '../../../utils/subjectSession';
@@ -14,14 +13,13 @@ interface Props {
   ownerId?: string;
   onBack?: () => void;
   onUpdateMaterial?:()=>void;
-  onOpenQuestion?:(question:CbtQuestion)=>void;
   onProceed: (opts: { questions: CbtQuestion[]; durationSeconds: number; mode: 'practice' | 'full'; subjects: string[]; years: string[]; topics: string[] }) => void | Promise<void>;
 }
 type Step = 'subjects' | 'settings' | 'review';
 const steps: Step[] = ['subjects', 'settings', 'review'];
 const stepNames = { subjects: 'Subjects', settings: 'Session', review: 'Review' };
 
-export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, onOpenQuestion, onUpdateMaterial }: Props) {
+export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, onUpdateMaterial }: Props) {
   const subjects = useMemo(() => getAvailableSubjects(bundle), [bundle]);
   const bySubject = useMemo(() => {
     const map: Record<string, CbtQuestion[]> = Object.create(null);
@@ -41,12 +39,12 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
     }
     for(const subject of subjects) { if(bundle.revisionSet)settings[subject]={...settings[subject],studyBy:'topic',selectedSet:true,count:'all'};if(bundle.suggestion?.subject===subject)settings[subject]={...settings[subject],studyBy:bundle.suggestion.year?'paper':'topic',year:bundle.suggestion.year||'',paper:bundle.suggestion.paper||'',topics:[bundle.suggestion.topic],count:'10'}; }
     const selected = bundle.suggestion ? [bundle.suggestion.subject] : Array.isArray(saved?.subjects) ? saved.subjects.filter((subject: string) => subjects.includes(subject) && bySubject[subject]?.length) : subjects.length <= 4 ? subjects.filter(subject => bySubject[subject]?.length) : [];
-    return { settings, selected, mode: saved?.mode === 'full' ? 'full' as const : 'practice' as const, duration: typeof saved?.duration === 'string' ? saved.duration : '20', shuffle: saved?.shuffle === true };
+    return { settings, selected, mode: saved?.mode === 'full' ? 'full' as const : 'practice' as const, duration: typeof saved?.duration === 'string' ? saved.duration : '20', shuffle: saved?.shuffle === true, unseenFirst: saved?.unseenFirst !== false, mock: saved?.mock === true };
   }, [storageKey, subjects, bySubject]);
   const isUtme=bundle.kind==='utme-bank'||/^UTME$/i.test(bundle.examType||'');
   const english=subjects.find(subject=>/^(use of )?english( language)?$/i.test(subject));
-  const [mock,setMock]=useState(false);
-  const [searchOpen,setSearchOpen]=useState(false),[seen,setSeen]=useState<Set<string>>(new Set()),[unseenFirst,setUnseenFirst]=useState(true);
+  const [mock,setMock]=useState(initial.mock);
+  const [seen,setSeen]=useState<Set<string>>(new Set()),[unseenFirst,setUnseenFirst]=useState(initial.unseenFirst);
   useEffect(()=>{let active=true;learningProgress(ownerId,bundle.id).then(rows=>{if(active)setSeen(new Set(rows.filter(row=>row.outcome!=='skipped').map(row=>row.key)))}).catch(()=>{});return()=>{active=false};},[ownerId,bundle.id]);
   const [selected, setSelected] = useState<string[]>(initial.selected);
   const [settings, setSettings] = useState(initial.settings);
@@ -63,8 +61,8 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
   const scroll = useRef<HTMLDivElement>(null);
   useEffect(() => { scroll.current?.scrollTo({ top: 0 }); }, [step, editing]);
   useEffect(() => {
-    if (storageKey) try { localStorage.setItem(storageKey, JSON.stringify({ subjects: selected, settings, mode, duration, shuffle })); } catch {}
-  }, [storageKey, selected, settings, mode, duration, shuffle]);
+    if (storageKey) try { localStorage.setItem(storageKey, JSON.stringify({ subjects: selected, settings, mode, duration, shuffle, unseenFirst, mock })); } catch {}
+  }, [storageKey, selected, settings, mode, duration, shuffle, unseenFirst, mock]);
   const counts = useMemo(() => Object.fromEntries(selected.map(subject => [subject, subjectQuestionCount(bySubject[subject] || [], settings[subject])])), [selected, bySubject, settings]);
   const count = Object.values(counts).reduce((sum, value) => sum + value, 0);
   const invalidSubject = selected.find(subject => !counts[subject]);
@@ -79,7 +77,8 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
   function back() { if (editing) setEditing(null); else if (step !== 'subjects') setStep(steps[steps.indexOf(step) - 1]); else onBack?.(); }
   function description(subject: string) {
     const value = settings[subject];
-    return [value.studyBy === 'paper' ? value.paper || value.year : 'Topic practice', value.topics === null ? 'All topics' : `${value.topics.length} topics`, `${counts[subject] || 0} questions`].join(' · ');
+    const questions = counts[subject] || 0;
+    return [value.studyBy === 'paper' ? value.paper || value.year : 'Topic practice', value.topics === null ? 'All topics' : `${value.topics.length} topics`, `${questions} question${questions === 1 ? '' : 's'}`].join(' · ');
   }
   async function begin() {
     if (!ready || starting.current || durationSeconds === null) return;
@@ -90,6 +89,8 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
       await onProceed({ questions, durationSeconds, mode, subjects: selected, years: [...new Set(selected.filter(subject => settings[subject].studyBy === 'paper').map(subject => settings[subject].year))], topics: selected.flatMap(subject => settings[subject].topics || []) });
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not start this session. Please try again.'); starting.current = false; setBusy(false); }
   }
+  const activeStep = editing ? 'subjects' : step;
+  const stepDetails = {subjects: `${selected.length} selected`, settings: `${mode === 'full' ? 'Exam' : 'Practice'} · ${durationSeconds === null ? 'Set time' : duration + ' min'}`, review: ready ? `${count} questions` : 'Check selection'};
   const currentSettings = editing ? settings[editing] : null;
   const currentQuestions = editing ? bySubject[editing] || [] : [];
   const years = useMemo(() => subjectYears(currentQuestions), [currentQuestions]);
@@ -100,11 +101,11 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
 
   return <main className="study-app session-builder" aria-busy={busy}>
     <header className="study-topbar builder-topbar"><button className="icon-button" aria-label={editing ? 'Back to session setup' : step === 'subjects' ? 'Back to library' : 'Previous setup step'} onClick={back}><ArrowLeft size={20} /></button><span className="builder-context"><strong>{environment.name}</strong>{subtitle && <small>{subtitle}</small>}</span><span className="wordmark">past<span>q</span></span></header>
-    {onOpenQuestion&&<div className="builder-search-link">{bundle.updateAvailable&&onUpdateMaterial&&<button className="text-button" onClick={onUpdateMaterial}>Update available</button>}<button className="text-button" onClick={()=>setSearchOpen(true)}><Search size={16}/>Search & coverage</button></div>}
-    <nav className="builder-steps" aria-label="Session setup">{steps.map((value, index) => <button key={value} aria-label={stepNames[value]} aria-current={!editing && step === value ? 'step' : undefined} disabled={value !== 'subjects' && !selected.length} onClick={() => { setEditing(null); setStep(value); }}><span aria-hidden="true">{!editing && step === value ? index + 1 : steps.indexOf(step) > index ? <Check size={13} /> : index + 1}</span>{stepNames[value]}</button>)}</nav>
+    {bundle.updateAvailable&&onUpdateMaterial&&<div className="builder-search-link"><button className="text-button" onClick={onUpdateMaterial}>Update available</button></div>}
+    <nav className="builder-steps" aria-label="Session setup">{steps.map((value, index) => <button key={value} aria-label={stepNames[value]} aria-current={activeStep === value ? 'step' : undefined} disabled={value !== 'subjects' && !selected.length} onClick={() => { setEditing(null); setStep(value); }}><span className="builder-step-number" aria-hidden="true">{index + 1}</span><span className="builder-step-label"><strong>{stepNames[value]}</strong><small>{stepDetails[value]}</small></span></button>)}</nav>
     <div className="builder-scroll" ref={scroll}>
       <div className="builder-content">
-        {isUtme&&!bundle.revisionSet&&<div className="mock-choice" role="group" aria-label="Session format"><button aria-pressed={!mock} onClick={()=>setMock(false)}>Custom</button><button aria-pressed={mock} disabled={!english} onClick={applyMock}>UTME mock</button></div>}
+        {isUtme&&!bundle.revisionSet&&!editing&&step==='subjects'&&<div className="mock-choice" role="group" aria-label="Session format"><button aria-pressed={!mock} onClick={()=>setMock(false)}>Custom</button><button aria-pressed={mock} disabled={!english} onClick={applyMock}>UTME mock</button></div>}
         {mock&&<p className="student-setting-note">English 60 + three subjects of 40 · 120 minutes · 2026 format</p>}
         {mockError&&<p className="selection-error" role="status">{mockError}</p>}
         {editing && currentSettings ? <section className="subject-editor" aria-label={`Settings for ${editing}`}>
@@ -119,17 +120,17 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
           {counts[editing] === 0 && <p className="selection-error" role="status">No questions selected. Choose a topic or another paper.</p>}
           <div className="subject-editor-foot"><BookOpen size={18} /><span>{subjectPool(currentQuestions, currentSettings).length.toLocaleString()} available in this selection</span></div>
         </section> : step === 'subjects' ? <section aria-label="Selected subjects">
-          <div className="builder-heading"><h1>Your subjects.</h1><button className="text-button" onClick={() => { setSearch(''); setPicker(true); }}><Plus size={17} />{selected.length ? 'Change' : 'Choose subjects'}</button></div>
+          <div className="builder-heading"><h1>Subjects</h1><button className="text-button" onClick={() => { setSearch(''); setPicker(true); }}><Plus size={17} />{selected.length ? 'Change' : 'Choose subjects'}</button></div>
           {selected.length ? <div className="builder-subjects">{selected.map((subject, index) => <div className="builder-subject" key={subject}><span className="subject-order">{String(index + 1).padStart(2, '0')}</span><button className="subject-edit-link" aria-label={`Edit ${subject}`} onClick={() => setEditing(subject)}><strong>{subject}</strong><small>{description(subject)}</small></button><button className="icon-button" aria-label={`Edit ${subject} settings`} onClick={() => setEditing(subject)}><Pencil size={17} /></button><button className="icon-button" aria-label={`Remove ${subject}`} disabled={mock&&subject===english} onClick={() => toggleSubject(subject)}><X size={16} /></button></div>)}</div> : <div className="builder-empty"><ScholarMascot state="thinking" compact /><button className="study-primary" onClick={() => { setSearch(''); setPicker(true); }}>Choose subjects<Plus size={17} /></button></div>}
         </section> : step === 'settings' ? <section aria-label="Session settings">
-          <div className="builder-heading"><h1>Your pace.</h1></div>
+          <div className="builder-heading"><h1>Session</h1></div>
           <div className="mode-choices">{(['practice', 'full'] as const).map(value => <button key={value} aria-pressed={mode === value} className={mode === value ? 'selected' : ''} onClick={() => { setMode(value); if(value==='practice')setMock(false); if (mock && value === 'full') setDuration('120'); else if (!durationEdited.current) setDuration(value === 'practice' ? '20' : '60'); }}>{value === 'practice' ? <BookOpen size={22} /> : <Clock3 size={22} />}<strong>{value === 'practice' ? 'Practice' : 'Exam'}</strong>{mode === value && <Check size={18} />}</button>)}</div>
           <label className="builder-field"><span>Time limit</span><div className="duration-input"><Clock3 size={17} /><input aria-label="Time limit in minutes" type="number" inputMode="decimal" min="0" step="any" disabled={mock} value={duration} onChange={event => { durationEdited.current = true; setDuration(event.target.value); }} aria-invalid={durationSeconds === null} /><span>min</span></div></label>
           {durationSeconds === null && <p className="selection-error" role="alert">Enter a time greater than zero.</p>}
           {mode==='practice'&&!bundle.revisionSet&&<label className="builder-field"><span>Start with unseen questions</span><input type="checkbox" checked={unseenFirst} onChange={e=>setUnseenFirst(e.target.checked)}/></label>}
           <label className="builder-field"><span>Shuffle within each subject</span><input type="checkbox" checked={shuffle} onChange={event => setShuffle(event.target.checked)} /></label>
         </section> : <section aria-label="Review session">
-          <div className="builder-heading"><h1>Ready when you are.</h1></div>
+          <div className="builder-heading"><h1>Review</h1></div>
           <div className="builder-review-total"><strong>{count.toLocaleString()}</strong><span>questions · {duration} min · {mode === 'full' ? 'Exam' : 'Practice'}</span></div>
           <div className="builder-review-list">{selected.map(subject => <button key={subject} aria-label={`Revise ${subject}`} onClick={() => setEditing(subject)}><span><strong>{subject}</strong><small>{description(subject)}</small></span><Pencil size={17} /></button>)}</div>
           <button className="text-button" onClick={() => setStep('settings')}>Change session settings<ChevronRight size={16} /></button>
@@ -139,7 +140,6 @@ export function CustomizeCbtScreen({ bundle, ownerId = '', onProceed, onBack, on
       </div>
     </div>
     <footer className="builder-footer"><div><strong>{count.toLocaleString()} questions</strong><small>{selected.length} {selected.length === 1 ? 'subject' : 'subjects'}</small></div>{editing ? <button className="study-primary" onClick={() => setEditing(null)}>Done<Check size={17} /></button> : <button className="study-primary" disabled={busy || (step === 'review' ? !ready : !selected.length || step === 'settings' && durationSeconds === null)} onClick={() => step === 'review' ? void begin() : setStep(steps[steps.indexOf(step) + 1])}>{busy ? 'Preparing…' : step === 'review' ? 'Start session' : 'Continue'}<ArrowRight size={18} /></button>}</footer>
-    {searchOpen&&onOpenQuestion&&<LocalQuestionSearch bundle={bundle} onClose={()=>setSearchOpen(false)} onOpen={question=>{setSearchOpen(false);onOpenQuestion(question);}}/>}
     {picker && <StudyDialog title="Choose subjects" onClose={() => setPicker(false)} className="builder-picker"><label className="builder-search"><Search size={18} /><input aria-label="Find a subject" placeholder="Find a subject" value={search} onChange={event => setSearch(event.target.value)} /></label><div className="builder-picker-options">{subjects.filter(subject => subject.toLowerCase().includes(search.trim().toLowerCase())).map(subject => <label className="selection-row" key={subject}><input type="checkbox" aria-label={subject} checked={selected.includes(subject)} disabled={!bySubject[subject]?.length||mock&&(subject===english||!selected.includes(subject)&&selected.length>=4)} onChange={() => toggleSubject(subject)} /><span>{subject}</span><small>{bySubject[subject]?.length.toLocaleString() || 0}</small></label>)}{!subjects.some(subject => subject.toLowerCase().includes(search.trim().toLowerCase())) && <p>No matching subjects.</p>}</div><button className="study-primary" onClick={() => setPicker(false)}>Done{selected.length > 0 && ` · ${selected.length}`}<Check size={17} /></button></StudyDialog>}
     {topicPicker && editing && currentSettings && <StudyDialog title={`${editing} topics`} onClose={() => setTopicPicker(false)} className="builder-picker"><label className="selection-row"><input type="checkbox" checked={currentSettings.topics === null} onChange={event => update(editing, { topics: event.target.checked ? null : [] })} /><span>All topics</span></label><div className="builder-picker-options">{topics.map(topic => <label className="selection-row" key={topic}><input type="checkbox" checked={currentSettings.topics === null || currentSettings.topics.includes(topic)} onChange={event => { const values = currentSettings.topics === null ? [...topics] : currentSettings.topics; update(editing, { topics: event.target.checked ? [...values, topic] : values.filter(value => value !== topic) }); }} /><span>{topic}</span></label>)}</div><button className="study-primary" onClick={() => setTopicPicker(false)}>Done<Check size={17} /></button></StudyDialog>}
   </main>;
