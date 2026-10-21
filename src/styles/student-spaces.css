@@ -3,10 +3,10 @@
 .study-app .library-search:focus-within { outline:2px solid var(--study-accent); outline-offset:3px; border-color:transparent; }
 .category-gallery { display:flex; flex-direction:column; gap:12px; padding:24px 0; }
 .category-group { border:1px solid var(--study-line); border-radius:12px; background:var(--study-panel); overflow:hidden; }
-.category-group.is-open { border-color:var(--study-accent); }
-.category-group>.category-tile { border:0; border-radius:0; }
-.category-group>.category-tile:focus-visible { outline:2px solid var(--study-accent); outline-offset:-3px; }
-.category-panel { padding:16px 24px 20px; border-top:1px solid var(--study-line); }
+.category-group.is-open { border-color:transparent; }
+.category-group>.category-header>.category-tile { border:0; border-radius:0; }
+.category-group>.category-header>.category-tile:focus-visible { outline:2px solid var(--study-accent); outline-offset:-3px; }
+.category-panel { padding:16px 24px 20px; }
 .category-panel[hidden] { display:none; }
 .category-panel:not([hidden]) { animation:category-open .18s ease-out; }
 .category-panel .catalog-heading { margin-bottom:0; }

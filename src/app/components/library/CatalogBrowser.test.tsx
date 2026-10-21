@@ -21,19 +21,21 @@ beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; containe
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 
 describe('Browse category accordions', () => {
-  it('downloads directly from a category and institution without opening their rows', async () => {
+  it('keeps downloads scoped to institutions, collections and materials instead of broad categories', async () => {
     const download = vi.fn();
     await act(async () => root.render(<CatalogBrowser catalog={catalog} onSelectManufacturer={select} onDownloadMaterials={download} />));
     const button=(name:string)=>container.querySelector<HTMLElement>(`button[aria-label="${name}"]`)!;
-    await click(button('Download Schools & universities'));
-    expect(download).toHaveBeenLastCalledWith({title:'Schools & universities',ids:['ui-paper']});
+    expect(container.querySelector('.category-header .catalog-download')).toBeNull();
+    for (const title of ['Schools & universities', 'Tests & qualifications', 'Professional study', 'Other materials']) expect(button(`Download ${title}`)).toBeNull();
     expect(categoryButton('Schools & universities').getAttribute('aria-expanded')).toBe('false');
     await click(categoryButton('Schools & universities'));
+    expect(download).not.toHaveBeenCalled();
     await click(button('Download University of Ibadan'));
     expect(download).toHaveBeenLastCalledWith({title:'University of Ibadan',ids:['ui-paper']});
     expect(container.querySelector('.organization-toggle')?.getAttribute('aria-expanded')).toBe('false');
     await click(container.querySelector('.organization-toggle')!);
-    await click(button('Download all Post-UTME from University of Ibadan'));
+    await click(button('Download Post-UTME from University of Ibadan'));
+    expect(download).toHaveBeenLastCalledWith({title:'Post-UTME',ids:['ui-paper']});
     await click(button('Download UI preparation'));
     expect(download).toHaveBeenLastCalledWith({title:'UI preparation',ids:['ui-paper']});
     expect(container.querySelector('button button')).toBeNull();

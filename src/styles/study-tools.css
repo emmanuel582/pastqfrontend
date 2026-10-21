@@ -76,7 +76,6 @@
 .catalog-exam-heading>h3 { flex:1; }
 .catalog-browser .catalog-download { flex-shrink:0; min-width:44px; width:44px; height:44px; border:1px solid var(--study-line); border-radius:10px; }
 .catalog-browser .catalog-download:hover { background:var(--study-control); border-color:var(--study-accent); }
-.category-header>.catalog-download { margin-right:8px; }
 .catalog-material-open { display:flex; align-items:center; gap:18px; flex:1; min-width:0; border:0; padding:0; min-height:48px; text-align:left; color:inherit; background:transparent; }
 .catalog-material-open>span:not(.exam-artwork) { display:grid; gap:4px; min-width:0; flex:1; }
 .catalog-material-open small { color:var(--study-muted); font-size:12px; }

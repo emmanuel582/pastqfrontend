@@ -1,6 +1,6 @@
 # Downloads and artwork loading — 21 October 2026
 
-Download actions are available at the category, institution, exam collection and individual material levels. The themed dialog offers **All subjects** (start immediately) or **Choose subjects** (choose subjects and individual source papers). Closing the dialog starts no download.
+Broad Explore categories only expand their contents, with no download action or border around the opened category. Download actions belong to specific institutions, exam collections and individual materials. The themed dialog offers **All subjects** (start immediately) or **Choose subjects** (choose collections, subjects and individual source papers). Closing the dialog starts no download.
 
 The picker owns a bounded scrolling region and a separate footer. Long subject lists and paper lists support touch, mouse and keyboard scrolling while the download action stays visible. Multiple collections keep their own bundle identities, publishers, embedded diagrams and offline records. Verified download parts and completed collection commits are reused on retry. A multi-collection completion opens the Saved library.
 

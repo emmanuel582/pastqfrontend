@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { BookOpen, ChevronRight, Download, GraduationCap, HeartHandshake, Bookmark, History } from 'lucide-react';
+import { BookOpen, ChevronRight, GraduationCap, HeartHandshake, Bookmark, History } from 'lucide-react';
 import SkeletonShape from './SkeletonShape';
 import { StudyArt } from './library/StudyArt';
 
@@ -28,7 +28,7 @@ function Home({ hasSaved }: { hasSaved: boolean }) {
   </> : <FirstStep />}</div></div>;
 }
 function Catalog() {
-  return <div className="catalog-browser"><div className="category-gallery">{['institution','exam_board','professional_body'].map(type => <div className="category-group" key={type}><div className="category-header"><div className="category-tile"><span className="skeleton-vector category-art-skeleton"><StudyArt type={type}/></span><span className="category-label"><Block width="min(85%,240px)" height={21.5} /></span><ChevronRight size={17} className="skeleton-vector"/></div><span className="icon-button catalog-download skeleton-vector"><Download size={19}/></span></div></div>)}</div></div>;
+  return <div className="catalog-browser"><div className="category-gallery">{['institution','exam_board','professional_body'].map(type => <div className="category-group" key={type}><div className="category-header"><div className="category-tile"><span className="skeleton-vector category-art-skeleton"><StudyArt type={type}/></span><span className="category-label"><Block width="min(85%,240px)" height={21.5} /></span><ChevronRight size={17} className="skeleton-vector"/></div></div></div>)}</div></div>;
 }
 function Preferences({ hasActivity }: { hasActivity: boolean }) {
   return <div className="study-app student-preferences"><div className="study-topbar student-preferences-header"><Block width={125} height={24} /></div><div className="student-preferences-content"><div className="student-identity"><Block width={46} height={46} className="skeleton-circle" /><Copy /></div>
