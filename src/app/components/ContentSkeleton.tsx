@@ -1,17 +1,21 @@
 import type { CSSProperties } from 'react';
+import { BookOpen, ChevronRight, Download, GraduationCap, HeartHandshake, Bookmark, History } from 'lucide-react';
+import SkeletonShape from './SkeletonShape';
+import { StudyArt } from './library/StudyArt';
 
 export type SkeletonKind = 'page' | 'home' | 'catalog' | 'materials' | 'sessions' | 'preparation' | 'preferences' | 'history' | 'saved-questions' | 'reminders' | 'builder';
 type Props = { kind?: SkeletonKind; label?: string; fullPage?: boolean; hasSaved?: boolean; hasActivity?: boolean };
 function Block({ width = '100%', height = 12, className = '' }: { width?: CSSProperties['width']; height?: CSSProperties['height']; className?: string }) {
+  if(className.includes('skeleton-character'))return <SkeletonShape shape={className.includes('home')?'scholar-study':'scholar-idle'} className={className} style={{width,height}}/>;
   return <span className={`skeleton-block ${className}`} style={{ width, height }} />;
 }
 function Copy() { return <span className="skeleton-copy"><Block width="min(70%,320px)" /><Block width="min(46%,210px)" height={10} /></span>; }
-function Topbar({ className = '' }: { className?: string }) { return <div className={`study-topbar ${className}`}><Block width={58} height={25} /><Block width={110} height={16} /></div>; }
+function Topbar({ className = '' }: { className?: string }) { return <div className={`study-topbar ${className}`}><span className="wordmark">past<span>q</span></span><Block width={110} height={16} /></div>; }
 function Title() { return <Block width="min(65%,280px)" height={38} className="skeleton-heading" />; }
 function Rows({ kind = 'materials' }: { kind?: 'materials' | 'sessions' | 'history' | 'organizations' | 'home' }) {
   const rowClass = { materials: 'material-row', sessions: 'discover-row', history: 'material-row', organizations: 'organization-toggle', home: 'home-paper' }[kind];
   return <div className="skeleton-rows">{[0, 1, 2].map(index => <div className={rowClass} key={index}>
-    <Block width={48} height={48} className="skeleton-thumbnail" /><Copy /><Block width={kind === 'materials' ? 52 : 14} height={kind === 'materials' ? 36 : 14} />
+    <span className="exam-artwork skeleton-vector">{kind==='organizations'?<GraduationCap size={24} strokeWidth={1.5}/>:kind==='sessions'?<HeartHandshake size={22} strokeWidth={1.5}/>:<BookOpen size={22} strokeWidth={1.5}/>}</span><Copy /><Block width={kind === 'materials' ? 52 : 14} height={kind === 'materials' ? 36 : 14} />
   </div>)}</div>;
 }
 function FirstStep({ profile = false }: { profile?: boolean }) {
@@ -24,12 +28,12 @@ function Home({ hasSaved }: { hasSaved: boolean }) {
   </> : <FirstStep />}</div></div>;
 }
 function Catalog() {
-  return <div className="catalog-browser"><div className="category-gallery">{[0, 1, 2].map(index => <div className="category-group" key={index}><div className="category-tile"><Block className="study-art" /><span className="category-label"><Block width="min(85%,240px)" height={21.5} /></span><Block width={14} height={14} /></div></div>)}</div></div>;
+  return <div className="catalog-browser"><div className="category-gallery">{['institution','exam_board','professional_body'].map(type => <div className="category-group" key={type}><div className="category-header"><div className="category-tile"><span className="skeleton-vector category-art-skeleton"><StudyArt type={type}/></span><span className="category-label"><Block width="min(85%,240px)" height={21.5} /></span><ChevronRight size={17} className="skeleton-vector"/></div><span className="icon-button catalog-download skeleton-vector"><Download size={19}/></span></div></div>)}</div></div>;
 }
 function Preferences({ hasActivity }: { hasActivity: boolean }) {
   return <div className="study-app student-preferences"><div className="study-topbar student-preferences-header"><Block width={125} height={24} /></div><div className="student-preferences-content"><div className="student-identity"><Block width={46} height={46} className="skeleton-circle" /><Copy /></div>
     {hasActivity ? <div className="student-progress"><Block width={130} height={20} /><div className="student-stats">{[0, 1, 2].map(index => <div key={index}><Block width="60%" height={12} /><Block width="65%" height={34} className="skeleton-stat" /></div>)}</div><Block height={180} /></div> : <FirstStep profile />}
-    <div className="student-settings-list student-practice-links">{[0, 1].map(index => <div className="skeleton-setting" key={index}><Block width={34} height={34} /><Block width={140} height={16} /><Block width={14} height={14} /></div>)}</div>
+    <div className="student-settings-list student-practice-links">{[0, 1].map(index => <div className="skeleton-setting" key={index}><span className="skeleton-vector">{index===0?<History size={20}/>:<Bookmark size={20}/>}</span><Block width={140} height={16} /><Block width={14} height={14} /></div>)}</div>
     <div className="student-settings-list">{[0, 1, 2].map(index => <div className="skeleton-setting" key={index}><Block width={40} height={40} className="skeleton-thumbnail" /><Copy /><Block width={index === 2 ? 40 : 14} height={index === 2 ? 24 : 14} /></div>)}</div>
   </div></div>;
 }
@@ -43,7 +47,7 @@ function Preparation() {
   return <div className="study-app library-screen preparation-library"><Topbar /><div className="library-content"><div className="preparation-heading"><Block width={110} height={12} /><Title /></div><Block height={54} className="preparation-search" /><div className="preparation-environments">{[0, 1].map(index => <div className="preparation-environment" key={index}><Block width={64} height={64} className="skeleton-thumbnail" /><Copy /><Block width={16} height={16} /></div>)}</div></div></div>;
 }
 function Welcome() {
-  return <div className="study-app app-welcome"><div className="app-welcome-brand"><Block width={58} height={25} /></div><div className="app-welcome-greeting"><Block width="min(22svh,190px)" height="min(43svh,400px)" className="skeleton-character" /></div><div className="app-welcome-actions"><Block height={54} className="skeleton-action" /><div className="skeleton-signin"><Block width={50} height={14} /></div></div></div>;
+  return <div className="study-app app-welcome"><div className="app-welcome-brand"><span className="wordmark">past<span>q</span></span></div><div className="app-welcome-greeting"><SkeletonShape shape="scholar-wave" className="welcome-skeleton-shape" /></div><div className="app-welcome-actions"><Block height={54} className="skeleton-action" /><div className="skeleton-signin"><Block width={50} height={14} /></div></div></div>;
 }
 
 function Archive({ saved }: { saved: boolean }) {

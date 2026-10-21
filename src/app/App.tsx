@@ -12,6 +12,7 @@ import AppWelcome from "./components/AppWelcome";
 import NotificationsScreen from "./components/preferences/NotificationsScreen";
 import { PreferencesScreen, ThemeScreen, RemindersScreen } from "./components/preferences/PreferencesScreen";
 import DownloadScreen from './components/library/DownloadScreen';
+import DownloadChoiceDialog, { type DownloadScope, type DownloadMode } from './components/library/DownloadChoiceDialog';
 import StorageScreen from './components/preferences/StorageScreen';
 import QuestionReportsScreen from './components/preferences/QuestionReportsScreen';
 import { downloadManifest } from '../services/downloads';
@@ -239,6 +240,7 @@ function HomeScreen({
   onRetryLibrary,
   onOpenBundle,
   onDownloadBundle,
+  initialLibraryTab,
   onSelectManufacturer,
   preparation,
   onPreparation,
@@ -260,6 +262,7 @@ function HomeScreen({
   onRetryLibrary: () => void;
   onOpenBundle: (bundle: any) => void;
   onDownloadBundle: (bundle: any) => void;
+  initialLibraryTab: 'browse' | 'downloaded';
   onSelectManufacturer: (mfg: CatalogManufacturer, exam: CatalogExamType, uni: CatalogUniversity) => void;
   preparation: Preparation;
   onPreparation: (value: Preparation) => void;
@@ -287,6 +290,7 @@ function HomeScreen({
             onRetry={onRetryLibrary}
             onOpen={onOpenBundle}
             onDownload={onDownloadBundle}
+            initialTab={initialLibraryTab}
             onSelect={onSelectManufacturer}
             onUpload={() => nav("snap")}
           />
@@ -829,7 +833,9 @@ export default function App() {
   const [globalLibrary, setGlobalLibrary] = useState<any[]>([]);
   const [libraryCatalog, setLibraryCatalog] = useState<LibraryCatalog | null>(null);
   const [libraryStatus, setLibraryStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [downloadTarget,setDownloadTarget]=useState<string|null>(null);
+  const [downloadTarget,setDownloadTarget]=useState<(DownloadScope & {mode:DownloadMode})|null>(null);
+  const [downloadChoice,setDownloadChoice]=useState<DownloadScope|null>(null);
+  const [libraryStart,setLibraryStart]=useState<'browse'|'downloaded'>('browse');
   const [customizeBundle, setCustomizeBundle] = useState<any | null>(null);
   const [restoringImages, setRestoringImages] = useState(false);
   const [practiceSource, setPracticeSource] = useState({ bundleId: "demo", version: null as string | null });
@@ -1007,11 +1013,8 @@ export default function App() {
     try {
       const ownerId = authenticatedUser.current;
       let bundle = await getOfflineBundle(mfg.bundleId, ownerId || undefined);
-      if (!bundle?.questions?.length) { setDownloadTarget(mfg.bundleId);setScreen('downloads');return; }
-      if (!bundle?.questions?.length) {
-        alert("This material has no questions yet.");
-        return;
-      }
+      if (authenticatedUser.current !== ownerId) return;
+      if (!bundle?.questions?.length) { handleDownloadBundle({id:mfg.bundleId,title:mfg.title||mfg.name});return; }
       const original = bundle;
       bundle = await ensureBundleImages(bundle, () => setRestoringImages(true));
       if (authenticatedUser.current !== ownerId) return;
@@ -1129,7 +1132,10 @@ export default function App() {
     } finally { setRestoringImages(false); }
   };
 
-  const handleDownloadBundle = async (bundle: any) => { setDownloadTarget(bundle.id);setScreen('downloads'); };
+  const handleDownloadBundle = (bundle: any) => {
+    const ids=[...new Set<string>((bundle.ids||[bundle.bundleId||bundle.id]).filter((id:unknown)=>typeof id==='string'&&id.length))];
+    if(ids.length)setDownloadChoice({ids,title:bundle.title||bundle.name||'Your materials'});
+  };
 
   useEffect(() => {
     refreshGlobalLibrary().catch(() => {});
@@ -1147,6 +1153,7 @@ export default function App() {
       if (!active) return;
       setAuthReady(true);
       if (previousUser && previousUser !== user?.id) {
+        setDownloadChoice(null);setDownloadTarget(null);setLibraryStart('browse');
         currentAttempt.current = null;
         setReminderSearch(''); pendingReminder.current = null;
         setActiveQuestions(DEMO_QUESTIONS); setWrittenAnswers([]); setAnswers(Array(DEMO_QUESTIONS.length).fill(null));
@@ -1374,6 +1381,7 @@ export default function App() {
           onRetryLibrary={() => { void refreshGlobalLibrary(); }}
           onOpenBundle={openBundle}
           onDownloadBundle={handleDownloadBundle}
+          initialLibraryTab={libraryStart}
           onSelectManufacturer={handleSelectManufacturer}
           preparation={preparation}
           onPreparation={changePreparation}
@@ -1413,15 +1421,15 @@ export default function App() {
           }}
         />
       );
-      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget} id={downloadTarget} onBack={()=>handleNavTab('library')} onSaved={bundle=>{void refreshOfflineLibrary();void openBundle(bundle);}}/>:null;
-      case "question-reports": return <QuestionReportsScreen key={userId} owner={userId} onBack={()=>nav('preference')} onUpdate={id=>{setDownloadTarget(id);setScreen('downloads');}}/>;
-      case "settings-storage": return <StorageScreen key={userId} owner={userId} onBack={()=>nav('preference')} onChange={async()=>{await refreshOfflineLibrary();await refreshArchive(userId);setSessions(await readPracticeHistory(userId));}} onUpdate={bundle=>{setDownloadTarget(bundle.id);setScreen('downloads');}}/>;
+      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget.ids.join(':')+downloadTarget.mode} id={downloadTarget.ids[0]} ids={downloadTarget.ids} title={downloadTarget.title} mode={downloadTarget.mode} onBack={()=>handleNavTab('library')} onSaved={(bundle,count)=>{void refreshOfflineLibrary();if(count===1&&bundle)void openBundle(bundle);else{setLibraryStart('downloaded');changePreparation({...preparation,activeEnvironment:null});handleNavTab('library');}}}/>:null;
+      case "question-reports": return <QuestionReportsScreen key={userId} owner={userId} onBack={()=>nav('preference')} onUpdate={id=>{setDownloadTarget({ids:[id],title:'Update material',mode:'select'});setScreen('downloads');}}/>;
+      case "settings-storage": return <StorageScreen key={userId} owner={userId} onBack={()=>nav('preference')} onChange={async()=>{await refreshOfflineLibrary();await refreshArchive(userId);setSessions(await readPracticeHistory(userId));}} onUpdate={bundle=>{setDownloadTarget({ids:[bundle.id],title:bundle.title||'Update material',mode:'select'});setScreen('downloads');}}/>;
       case "customize-cbt": return customizeBundle ? (
         <CustomizeCbtScreen
           key={String(customizeBundle.id || "bundle")}
           bundle={customizeBundle}
           ownerId={userId}
-          onUpdateMaterial={()=>{setDownloadTarget(customizeBundle.id);setScreen('downloads');}}
+          onUpdateMaterial={()=>{setDownloadTarget({ids:[customizeBundle.id],title:customizeBundle.title||'Update material',mode:'select'});setScreen('downloads');}}
           onOpenQuestion={question=>openSavedQuestion({key:'search',owner:userId,title:customizeBundle.title,source:{bundleId:customizeBundle.id,version:customizeBundle.updatedAt||customizeBundle.updated_at||null},question:question as any,assets:customizeBundle.assets||{},answer:null,createdAt:new Date().toISOString()})}
           onBack={() => { nav('home'); setNavTab('library'); }}
           onProceed={async ({ questions, durationSeconds, mode }) => {
@@ -1510,6 +1518,7 @@ export default function App() {
 
   return (
     <div className="pastq-root h-screen w-full" style={{ background: "var(--study-bg)", height: "100dvh" }}>
+      {downloadChoice && <DownloadChoiceDialog scope={downloadChoice} onClose={()=>setDownloadChoice(null)} onChoose={mode=>{setDownloadTarget({...downloadChoice,mode});setDownloadChoice(null);setScreen('downloads');}}/>}
       {storageError && userId && <div className="practice-storage-notice" role="alert"><span>{storageError}</span><button className="text-button" onClick={async () => { try { await persistCheckpoint(); await refreshArchive(userId); setStorageError(''); } catch { setStorageError('Device storage is unavailable. Keep this exam open and try again.'); } }}>Retry</button><button className="icon-button" aria-label="Dismiss storage notice" onClick={() => setStorageError('')}><X size={17} /></button></div>}
       <div className="h-full w-full overflow-hidden">
         {!authReady ? <ContentSkeleton kind="page" label="Opening PastQ" fullPage /> : restoringImages ? <ContentSkeleton kind="builder" label="Loading your material" fullPage /> : renderScreen()}

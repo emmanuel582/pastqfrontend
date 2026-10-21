@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import SkeletonShape from './SkeletonShape';
 
 // A continuous displacement field bends the sleeve gradually towards the elbow.
 // The palm, wrist and cuff remain one image: no cutout, hinge seam or missing skin.
@@ -17,7 +18,7 @@ export default function ScholarGreeting() {
     update(); media.addEventListener('change', update); return () => media.removeEventListener('change', update);
   }, []);
   return <button type="button" className="welcome-scholar" aria-label="Wave with Scholar" onClick={() => setWave(value => value + 1)}>
-    {!ready && !failed && <span className="skeleton-block mascot-skeleton" aria-hidden="true" />}
+    {!ready && !failed && <SkeletonShape shape="scholar-wave" className="welcome-loading-shape" />}
     {failed ? <span className="welcome-scholar-fallback" aria-hidden="true">past<span>q</span></span> : <svg viewBox="42 0 108 208" aria-hidden="true" data-ready={ready} data-eyes-ready={eyesReady}>
       <defs>
         <filter id={`${id}-wave`} filterUnits="userSpaceOnUse" x="38" y="0" width="116" height="208" colorInterpolationFilters="sRGB">

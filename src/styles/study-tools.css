@@ -49,3 +49,41 @@
 .mock-choice button { min-height:44px; border:1px solid var(--study-line); border-radius:8px; padding:10px 14px; background:transparent; color:var(--study-muted); font-size:13px; }
 .mock-choice button[aria-pressed="true"] { color:var(--study-ink); background:var(--study-control); }
 @media(max-width:480px){.review-filters{gap:3px;padding-inline:14px}.review-filters>button{padding-inline:9px}.review-filters>.review-retry{margin-left:0}.storage-material{gap:8px}.saved-question-item .archive-bookmark-open{gap:6px}.saved-question-item .archive-bookmark-open>svg{display:none}}
+
+/* Downloads own their viewport: the page wrapper deliberately does not scroll. */
+.download-screen { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; padding-bottom:0; }
+.download-screen>.archive-topbar { width:100%; flex-shrink:0; margin-inline:auto; position:relative; }
+.download-scroll { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior-y:contain; touch-action:pan-y; -webkit-overflow-scrolling:touch; }
+.download-scroll:focus-visible { outline-offset:-3px; }
+.download-screen .download-content { padding-bottom:28px; }
+.download-content>h2 { margin-bottom:16px; overflow-wrap:anywhere; }
+.download-footer { flex-shrink:0; border-top:1px solid var(--study-line); background:var(--study-bg); padding:12px 28px max(16px,env(safe-area-inset-bottom)); }
+.download-footer .download-actions { max-width:744px; margin:0 auto; padding:0; }
+.download-footer .download-actions>.study-primary { margin:0; min-height:48px; }
+.download-collection-subjects { padding-left:20px; }
+.download-all-state { min-height:180px; display:grid; align-content:center; justify-items:center; gap:16px; text-align:center; padding-block:24px; }
+.download-all-state>svg { color:var(--study-accent); }
+.download-all-state>p { color:var(--study-muted); font-size:13px; }
+.download-choice-context { margin:0 0 22px; color:var(--study-muted); overflow-wrap:anywhere; font-size:14px; }
+.download-choice-context>span { display:block; margin-top:5px; font-size:12px; }
+.download-choices { display:grid; gap:10px; }
+.download-choices>button { display:flex; align-items:center; gap:14px; width:100%; min-height:68px; padding:16px; color:var(--study-ink); border:1px solid var(--study-line); border-radius:10px; background:var(--study-panel); text-align:left; }
+.download-choices>button:hover { background:var(--study-control); border-color:var(--study-accent); }
+.download-choices strong { flex:1; font-size:15px; font-weight:600; }
+.download-choices>button>svg:first-child { color:var(--study-accent); }
+.category-header,.organization-heading,.catalog-exam-heading { display:flex; align-items:center; gap:8px; min-width:0; }
+.category-header>.category-tile,.organization-heading>.organization-toggle { flex:1; min-width:0; }
+.catalog-exam-heading>h3 { flex:1; }
+.catalog-browser .catalog-download { flex-shrink:0; min-width:44px; width:44px; height:44px; border:1px solid var(--study-line); border-radius:10px; }
+.catalog-browser .catalog-download:hover { background:var(--study-control); border-color:var(--study-accent); }
+.category-header>.catalog-download { margin-right:8px; }
+.catalog-material-open { display:flex; align-items:center; gap:18px; flex:1; min-width:0; border:0; padding:0; min-height:48px; text-align:left; color:inherit; background:transparent; }
+.catalog-material-open>span:not(.exam-artwork) { display:grid; gap:4px; min-width:0; flex:1; }
+.catalog-material-open small { color:var(--study-muted); font-size:12px; }
+@media(max-width:600px) { .download-footer { padding-inline:22px; }.catalog-material-open { gap:10px; }.catalog-material-row { gap:8px; }.category-header { gap:2px; } }
+
+.download-choice-dialog[open] { animation:download-dialog-enter .18s ease-out; }
+@keyframes download-dialog-enter { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .download-choice-dialog[open] { animation:none; } }
+
+.download-checkbox { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; cursor:pointer; }.download-subject { gap:8px; }

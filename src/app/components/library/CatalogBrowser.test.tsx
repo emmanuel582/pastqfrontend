@@ -21,13 +21,31 @@ beforeEach(() => { (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; containe
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 
 describe('Browse category accordions', () => {
+  it('downloads directly from a category and institution without opening their rows', async () => {
+    const download = vi.fn();
+    await act(async () => root.render(<CatalogBrowser catalog={catalog} onSelectManufacturer={select} onDownloadMaterials={download} />));
+    const button=(name:string)=>container.querySelector<HTMLElement>(`button[aria-label="${name}"]`)!;
+    await click(button('Download Schools & universities'));
+    expect(download).toHaveBeenLastCalledWith({title:'Schools & universities',ids:['ui-paper']});
+    expect(categoryButton('Schools & universities').getAttribute('aria-expanded')).toBe('false');
+    await click(categoryButton('Schools & universities'));
+    await click(button('Download University of Ibadan'));
+    expect(download).toHaveBeenLastCalledWith({title:'University of Ibadan',ids:['ui-paper']});
+    expect(container.querySelector('.organization-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    await click(container.querySelector('.organization-toggle')!);
+    await click(button('Download all Post-UTME from University of Ibadan'));
+    await click(button('Download UI preparation'));
+    expect(download).toHaveBeenLastCalledWith({title:'UI preparation',ids:['ui-paper']});
+    expect(container.querySelector('button button')).toBeNull();
+    expect(select).not.toHaveBeenCalled();
+  });
   it('opens content immediately inside its category and collapses the previous category', async () => {
     await render();
     const school = categoryButton('Schools & universities'), exams = categoryButton('Tests & qualifications');
     expect(school.getAttribute('aria-expanded')).toBe('false');
     expect(container.querySelector('.organization-toggle')).toBeNull();
     await click(school);
-    expect(panel(school).parentElement).toBe(school.parentElement);
+    expect(panel(school).parentElement).toBe(school.closest(".category-group"));
     expect(panel(school).textContent).toContain('University of Ibadan');
     expect(panel(school).textContent).not.toContain('WAEC');
     await click(exams);
@@ -41,7 +59,7 @@ describe('Browse category accordions', () => {
   it('keeps material selection connected to the correct exam and organization', async () => {
     await render(); await click(categoryButton('Tests & qualifications'));
     await click(container.querySelector('.organization-toggle')!);
-    await click(container.querySelector('.material-row')!);
+    await click(container.querySelector('.catalog-material-open')!);
     expect(select).toHaveBeenCalledWith(waecPaper, expect.objectContaining({ id: 'waec-cbt' }), expect.objectContaining({ id: 'waec' }));
   });
   it('reveals search matches and still lets the student close the matching category', async () => {
@@ -55,7 +73,7 @@ describe('Browse category accordions', () => {
   });
   it('keeps ungrouped material reachable instead of losing it during categorization', async () => {
     await render(); const other = categoryButton('Other materials'); await click(other);
-    expect(panel(other).textContent).toContain('My notes'); await click(panel(other).querySelector('.material-row')!);
+    expect(panel(other).textContent).toContain('My notes'); await click(panel(other).querySelector('.catalog-material-open')!);
     expect(select).toHaveBeenCalledWith(otherPaper, expect.objectContaining({ id: 'ungrouped' }), expect.objectContaining({ id: 'ungrouped' }));
   });
 });

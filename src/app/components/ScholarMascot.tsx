@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { scholarMotion, type ScholarFrame, type ScholarState } from '../../utils/scholarMotion';
 
+import SkeletonShape from './SkeletonShape';
+
 export type { ScholarState } from '../../utils/scholarMotion';
 const SPRITE_URL = '/pets/scholar/spritesheet.webp';
 
@@ -89,7 +91,6 @@ export default function ScholarMascot({ state = 'study', compact = false, animat
     '--scholar-blend': `${pose.blend}ms`,
   } as CSSProperties;
   return <div className={`scholar-scene ${compact ? 'scholar-compact' : ''}`} data-animated={animated} aria-hidden="true">
-    {!loaded && !failed && <span className="skeleton-block mascot-skeleton" />}
     {!compact && <svg className="scholar-books" viewBox="0 0 360 320" fill="none">
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58z" fill="var(--study-panel)" />
       <path d="M32 264h76v13H32zm5-15h67v15H37zm218 11h73v15h-73zm7-15h58v15h-58zM43 257h48m-51 14h61m163-4h53m-44-15h39" stroke="var(--study-art-ink)" strokeOpacity=".35" strokeWidth="1.2" />
@@ -97,6 +98,7 @@ export default function ScholarMascot({ state = 'study', compact = false, animat
     </svg>}
     <span className="scholar-ground" />
     {!failed && <div className="scholar-sprite" data-loaded={loaded} data-action={pose.action} style={style}>
+      {!loaded && <SkeletonShape shape={`scholar-${animated ? 'idle' : state}`} className="scholar-loading-shape" />}
       {motion.poses.map((frame, index) => <span key={index} className="scholar-pose" data-active={motion.active === index} style={{ '--scholar-row': frame.row, '--scholar-frame': frame.frame, opacity: motion.active === index ? 1 : 0, backgroundImage: `url(${SPRITE_URL})` } as CSSProperties} />)}
     </div>}
     {failed && <svg className="scholar-fallback" viewBox="0 0 120 100" fill="none"><path d="M16 24c18-7 31-5 44 2 13-7 26-9 44-2v54c-18-7-31-5-44 2-13-7-26-9-44-2zM60 26v54M27 39h20m-20 12h20m-20 12h14m33-24h18m-18 12h18m-18 12h12" stroke="currentColor" strokeWidth="2" /></svg>}

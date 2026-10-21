@@ -13,7 +13,7 @@
       <title>PastQ</title>
       <meta name="description" content="Convert past exam papers into timed CBT practice tests." />
       <meta name="robots" content="index, follow" />
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }html[data-theme="dark"] .boot-character svg { color:#292725; }.boot-wordmark {font:750 25px/1 Outfit,Manrope,sans-serif;letter-spacing:-1px;color:#292724}.boot-wordmark span {display:inline;background:transparent;color:#e36a5d}html[data-theme="dark"] .boot-wordmark {color:#f1ede7}</style>
       
     <style>
         .boot-skeleton { box-sizing:border-box; height:100dvh; display:grid; grid-template-rows:auto minmax(0,1fr) auto; padding:max(24px,env(safe-area-inset-top)) 24px max(20px,env(safe-area-inset-bottom)); background:#faf6f0; }
@@ -23,17 +23,17 @@
         .boot-brand { display:grid; place-items:center; padding:8px 0; }
         .boot-brand span { width:58px; height:25px; }
         .boot-character { display:grid; place-items:center; padding:18px 0 28px; }
-        .boot-character span { width:min(22svh,190px); height:min(43svh,400px); border-radius:42% 42% 18% 18%; }
+        .boot-character svg { color:#eadfd3; width:auto; height:min(43svh,400px); aspect-ratio:108/208; }
         .boot-actions { width:min(100%,360px); margin:auto; display:grid; gap:8px; }
         .boot-actions>span { height:54px; border-radius:12px; }
         .boot-actions>div { height:48px; display:grid; place-items:center; }
         .boot-actions>div>span { height:14px; width:50px; }
-      </style>
+      .boot-wordmark {font:750 25px/1 Outfit,Manrope,sans-serif;letter-spacing:-1px;color:#292724}.boot-wordmark span {display:inline;background:none;width:auto;height:auto;color:#e36a5d}html[data-theme="dark"] .boot-wordmark {color:#f1ede7}</style>
     </head>
 
     <body>
       
-      <div id="root"><div class="boot-skeleton" role="status" aria-label="Opening PastQ" aria-busy="true"><div class="boot-brand" aria-hidden="true"><span></span></div><div class="boot-character" aria-hidden="true"><span></span></div><div class="boot-actions" aria-hidden="true"><span></span><div><span></span></div></div></div></div>
+      <div id="root"><div class="boot-skeleton" role="status" aria-label="Opening PastQ" aria-busy="true"><div class="boot-brand" aria-hidden="true"><b class="boot-wordmark">past<span>q</span></b></div><div class="boot-character" aria-hidden="true"><svg viewBox="42 0 108 208"><path fill="currentColor" fill-rule="evenodd" d="M85,48L87,48L87,47L91,47L91,45L93,44L93,41L92,41L92,39L90,39L90,37L88,37L88,36L86,35L86,33L85,33L86,26L85,26L85,24L84,24L84,20L83,20L83,18L85,18L85,13L87,12L87,14L88,14L89,10L91,10L93,6L95,6L95,7L99,7L100,5L106,5L106,6L109,7L109,9L110,9L112,12L115,12L115,13L117,14L117,17L118,17L117,19L119,19L118,25L117,25L117,27L116,27L116,34L115,34L115,36L112,37L109,41L107,41L107,44L109,45L110,48L114,48L114,49L120,51L123,55L126,56L127,61L128,61L128,64L129,64L129,67L130,67L130,71L131,71L131,75L132,75L133,84L134,84L134,88L133,88L133,89L134,89L134,106L132,107L131,121L130,121L130,124L129,124L126,128L124,128L124,129L121,129L121,126L122,126L122,124L124,123L124,119L123,119L122,123L120,124L120,143L119,143L119,151L120,151L120,158L121,158L121,177L122,177L122,181L121,181L121,186L120,186L120,187L122,188L123,192L129,197L130,201L129,201L128,203L116,203L116,202L114,202L113,200L109,200L109,199L107,199L107,191L108,191L108,185L107,185L107,182L106,182L107,174L106,174L105,164L104,164L104,149L103,149L103,146L102,146L102,139L101,139L101,132L100,132L99,122L98,122L98,127L97,127L97,132L96,132L96,137L95,137L95,144L94,144L94,148L93,148L93,164L92,164L92,171L91,171L91,174L90,174L90,176L91,176L91,182L90,182L89,189L90,189L90,196L91,196L91,197L90,197L90,199L85,200L85,201L83,201L82,203L69,203L69,202L68,202L68,198L69,198L69,196L75,191L75,189L76,189L76,187L77,187L77,183L76,183L75,180L76,180L76,175L77,175L77,172L76,172L76,159L77,159L77,151L78,151L78,139L77,139L77,109L78,109L77,99L78,99L78,98L76,97L76,93L77,93L77,89L78,89L78,88L77,88L77,85L76,85L76,84L77,84L77,76L78,76L78,75L76,75L73,79L68,80L68,81L63,81L63,80L60,79L60,77L59,77L59,75L58,75L58,61L59,61L59,59L60,59L60,57L61,57L62,52L61,52L61,47L60,47L60,41L59,41L59,38L61,37L62,40L63,40L62,35L63,35L64,33L66,34L67,32L69,32L69,36L70,36L70,34L73,34L73,47L74,47L74,45L75,45L76,43L79,43L79,46L77,47L77,49L76,49L76,51L75,51L74,53L75,53L75,52L78,52L78,51L80,51L81,49L84,49L84,48ZM119,106L119,107L120,107L120,111L121,111L121,113L122,113L122,107ZM73,55L74,55L74,54L72,54L72,56L73,56Z"/></svg></div><div class="boot-actions" aria-hidden="true"><span></span><div><span></span></div></div></div></div>
       <noscript>Enable JavaScript to open PastQ.</noscript>
       <script type="module" src="/src/main.tsx"></script>
       

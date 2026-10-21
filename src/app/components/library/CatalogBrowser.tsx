@@ -1,21 +1,20 @@
 import { useId, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, BookOpen, Building2, GraduationCap, Landmark, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, Building2, GraduationCap, Landmark, ShieldCheck, Download } from 'lucide-react';
 import type { CatalogExamType, CatalogManufacturer, CatalogUniversity, LibraryCatalog } from '../../../services/libraryService';
 import ContentSkeleton from '../ContentSkeleton';
+import type { DownloadScope } from './DownloadChoiceDialog';
 import ExamArtwork from '../ExamArtwork';
+import { StudyArt } from './StudyArt';
+export { StudyArt } from './StudyArt';
 
 type Filter = 'all' | 'institution' | 'exam_board' | 'professional_body';
-interface Props { catalog: LibraryCatalog; search?: string; onSelectManufacturer: (material: CatalogManufacturer, exam: CatalogExamType, organization: CatalogUniversity) => void; onFlatBrowse?: () => void; status?: 'loading' | 'ready' | 'error'; onRetry?: () => void }
+interface Props { catalog: LibraryCatalog; search?: string; onSelectManufacturer: (material: CatalogManufacturer, exam: CatalogExamType, organization: CatalogUniversity) => void; onDownloadMaterials?: (scope: DownloadScope) => void; onFlatBrowse?: () => void; status?: 'loading' | 'ready' | 'error'; onRetry?: () => void }
 function category(type?: string): Filter { return ['university', 'polytechnic', 'college', 'school'].includes(type || '') ? 'institution' : type === 'exam_board' ? 'exam_board' : type === 'professional_body' ? 'professional_body' : 'all'; }
 
-export function StudyArt({ type = 'institution' }: { type?: string }) {
-  return <svg viewBox="0 0 180 120" fill="none" className="study-art" aria-hidden="true">
-    {type === 'institution' ? <><path d="M20 101H159M31 96V45L89 18l58 27v51M30 45h118M37 91h104M46 53v30m22-30v30m22-30v30m22-30v30m22-30v30" stroke="currentColor" strokeWidth="2" /><path d="M59 42h61L89 27z" fill="currentColor" opacity=".1" /><circle cx="89" cy="35" r="3" fill="var(--study-accent)" /><path d="M25 108h130M43 88h13m9 0h13m9 0h13m9 0h13m9 0h13" stroke="currentColor" opacity=".3" /></> : type === 'exam_board' ? <><g transform="rotate(-10 85 60)"><path d="M48 17h72v90H48z" fill="currentColor" opacity=".06" /><path d="M48 17h72v90H48zM62 34h44M62 42h27M76 62h30M76 78h30M76 94h19" stroke="currentColor" strokeWidth="1.5" /><path d="m58 60 4 4 7-9m-11 22 4 4 7-9m-11 22 4 4 7-9" stroke="var(--study-accent)" strokeWidth="2" /></g><path d="m126 86 15-57 6 2-15 57-6 7z" stroke="currentColor" strokeWidth="1.5" /></> : <><path d="M43 81V48c16-8 30-8 47 0 17-8 31-8 47 0v33c-17-7-31-7-47 0-17-7-31-7-47 0zM90 48v33M43 88h94" stroke="currentColor" strokeWidth="1.5" /><circle cx="90" cy="26" r="13" stroke="var(--study-accent)" strokeWidth="1.5" /><path d="m84 26 4 4 9-10M74 15l-7-6m39 6 7-6M90 7V1" stroke="var(--study-accent)" strokeWidth="1.5" /><path d="M56 56h23m-23 8h23m23-8h23m-23 8h23" stroke="currentColor" opacity=".3" /></>}
-  </svg>;
-}
-
-export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onFlatBrowse, status = 'ready', onRetry }: Props) {
+export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onDownloadMaterials, onFlatBrowse, status = 'ready', onRetry }: Props) {
   const id = useId();
+  function download(title:string,materials:CatalogManufacturer[]){const ids=[...new Set(materials.map(material=>material.bundleId).filter(Boolean))];if(ids.length)onDownloadMaterials?.({title,ids});}
+  function downloadButton(title:string,materials:CatalogManufacturer[],label=`Download ${title}`){return onDownloadMaterials&&materials.length>0?<button type="button" className="icon-button catalog-download" aria-label={label} onClick={()=>download(title,materials)}><Download size={19}/></button>:null;}
   const raw = catalog.organizations?.length ? catalog.organizations : catalog.universities || [];
   const organizations = raw.filter(org => !['general', 'unknown', 'misc', 'miscellaneous', 'unclassified'].includes(org.name.trim().toLowerCase()));
   const [choice, setChoice] = useState<{ query: string; category: Filter | null }>({ query: '', category: null });
@@ -38,17 +37,24 @@ export function CatalogBrowser({ catalog, search = '', onSelectManufacturer, onF
     return { ...item, rows, papers, open };
   });
   return <div className="catalog-browser"><div className="category-gallery" role="group" aria-label="Browse materials by category">{sections.map(item => <section key={item.id} className={`category-group${item.open ? ' is-open' : ''}`}>
-    <button id={`${id}-${item.id}-toggle`} className={`category-tile ${item.open ? 'selected' : ''}`} aria-expanded={item.open} aria-controls={`${id}-${item.id}-panel`} onClick={() => { setChoice({ query: needle, category: item.open ? null : item.id }); setStream('all'); }}><StudyArt type={item.id} /><span className="category-label"><strong>{item.title}</strong></span>{item.open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}</button>
+    <div className="category-header"><button id={`${id}-${item.id}-toggle`} className={`category-tile ${item.open ? 'selected' : ''}`} aria-expanded={item.open} aria-controls={`${id}-${item.id}-panel`} onClick={() => { setChoice({ query: needle, category: item.open ? null : item.id }); setStream('all'); }}><StudyArt type={item.id} /><span className="category-label"><strong>{item.title}</strong></span>{item.open ? <ChevronDown size={17} /> : <ChevronRight size={17} />}</button>{downloadButton(item.title,[...item.rows.flatMap(org=>org.examTypes.flatMap(exam=>exam.materials)),...item.papers])}</div>
     <div id={`${id}-${item.id}-panel`} className="category-panel" role="region" aria-labelledby={`${id}-${item.id}-toggle`} hidden={!item.open}>{item.open && <>
       <div className="catalog-heading"><label className="track-select"><span className="sr-only">Filter by study track</span><select value={stream} onChange={event => setStream(event.target.value)}><option value="all">All tracks</option>{['science', 'arts', 'commercial', 'general'].map(track => <option key={track} value={track}>{track[0].toUpperCase() + track.slice(1)}</option>)}</select></label></div>
-      {item.rows.map(org => { const open = expanded.has(org.id) || !!needle; const Icon = org.type === 'exam_board' ? Landmark : org.type === 'professional_body' ? ShieldCheck : org.type === 'university' ? GraduationCap : Building2; return <section className="catalog-organization" key={org.id}><button className="organization-toggle" aria-expanded={open} onClick={() => setExpanded(prev => { const next = new Set(prev); next.has(org.id) ? next.delete(org.id) : next.add(org.id); return next; })}><ExamArtwork identity={org} fallback={<Icon size={24} strokeWidth={1.5} />} /><span><strong>{org.name}</strong><small>{org.examTypes.length} collection{org.examTypes.length === 1 ? '' : 's'}</small></span>{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>{open && <div className="organization-materials">{org.examTypes.map(exam => <div key={exam.id}><h3>{exam.name}</h3>{exam.materials.map(material => <MaterialRow key={material.bundleId || material.id} material={material} examName={exam.name} onClick={() => onSelectManufacturer(material, exam, org)} />)}</div>)}</div>}</section>; })}
-      {item.papers.map(material => <MaterialRow key={material.bundleId || material.id} material={material} onClick={() => onSelectManufacturer(material, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', manufacturers: [] }, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', type: 'other', examTypes: [] })} />)}
+      {item.rows.map(org => {
+        const open = expanded.has(org.id) || !!needle;
+        const Icon = org.type === 'exam_board' ? Landmark : org.type === 'professional_body' ? ShieldCheck : org.type === 'university' ? GraduationCap : Building2;
+        return <section className="catalog-organization" key={org.id}>
+          <div className="organization-heading"><button className="organization-toggle" aria-expanded={open} onClick={() => setExpanded(previous => { const next = new Set(previous); next.has(org.id) ? next.delete(org.id) : next.add(org.id); return next; })}><ExamArtwork identity={org} fallback={<Icon size={24} strokeWidth={1.5} />} /><span><strong>{org.name}</strong><small>{org.examTypes.length} collection{org.examTypes.length === 1 ? '' : 's'}</small></span>{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>{downloadButton(org.name,org.examTypes.flatMap(exam=>exam.materials))}</div>
+          {open && <div className="organization-materials">{org.examTypes.map(exam => <div key={exam.id}><div className="catalog-exam-heading"><h3>{exam.name}</h3>{downloadButton(exam.name,exam.materials,`Download all ${exam.name} from ${org.name}`)}</div>{exam.materials.map(material => <MaterialRow key={material.bundleId || material.id} material={material} examName={exam.name} onClick={() => onSelectManufacturer(material, exam, org)} onDownload={onDownloadMaterials?()=>download(material.title||material.name,[material]):undefined} />)}</div>)}</div>}
+        </section>;
+      })}
+      {item.papers.map(material => <MaterialRow key={material.bundleId || material.id} material={material} onDownload={onDownloadMaterials?()=>download(material.title||material.name,[material]):undefined} onClick={() => onSelectManufacturer(material, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', manufacturers: [] }, { id: 'ungrouped', slug: 'ungrouped', name: 'Other materials', type: 'other', examTypes: [] })} />)}
       {!item.rows.length && !item.papers.length && empty(!!raw.length)}
     </>}</div>
   </section>)}</div>{!visible.length && !ungrouped.length && !sections.some(section => section.open) && empty()}</div>;
 }
-function MaterialRow({ material, examName, onClick }: { material: CatalogManufacturer; examName?: string; onClick: () => void }) {
+function MaterialRow({ material, examName, onClick, onDownload }: { material: CatalogManufacturer; examName?: string; onClick: () => void; onDownload?:()=>void }) {
   const [opening, setOpening] = useState(false);
   const year = material.yearMin && material.yearMax ? material.yearMin === material.yearMax ? material.yearMin : `${material.yearMin}–${material.yearMax}` : null;
-  return <button className="material-row" aria-busy={opening} disabled={opening} onClick={async () => { if (opening) return; setOpening(true); try { await onClick(); } finally { setOpening(false); } }}><ExamArtwork identity={examName || material} /><span><strong>{material.title || material.name}</strong><small>{opening ? 'Preparing your download…' : [`${material.questionCount || 0} questions`, year].filter(Boolean).join(' · ')}</small></span><ChevronRight size={18} /></button>;
+  return <div className="material-row catalog-material-row"><button className="catalog-material-open" aria-busy={opening} disabled={opening} onClick={async () => { if (opening) return; setOpening(true); try { await onClick(); } finally { setOpening(false); } }}><ExamArtwork identity={examName || material} /><span><strong>{material.title || material.name}</strong><small>{opening ? 'Preparing your download…' : [`${material.questionCount || 0} questions`, year].filter(Boolean).join(' · ')}</small></span><ChevronRight size={18} /></button>{onDownload&&<button className="icon-button catalog-download" aria-label={`Download ${material.title||material.name}`} disabled={opening} onClick={onDownload}><Download size={19}/></button>}</div>;
 }
