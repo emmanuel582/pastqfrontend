@@ -1421,7 +1421,7 @@ export default function App() {
           }}
         />
       );
-      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget.ids.join(':')+downloadTarget.mode} id={downloadTarget.ids[0]} ids={downloadTarget.ids} title={downloadTarget.title} mode={downloadTarget.mode} onBack={()=>handleNavTab('library')} onSaved={(bundle,count)=>{void refreshOfflineLibrary();if(count===1&&bundle)void openBundle(bundle);else{setLibraryStart('downloaded');changePreparation({...preparation,activeEnvironment:null});handleNavTab('library');}}}/>:null;
+      case "downloads": return downloadTarget?<DownloadScreen key={downloadTarget.ids.join(':')+downloadTarget.mode} id={downloadTarget.ids[0]} ids={downloadTarget.ids} title={downloadTarget.title} mode={downloadTarget.mode} onBack={()=>{void refreshOfflineLibrary();handleNavTab('library');}} onSaved={(bundle,count)=>{void refreshOfflineLibrary();if(count===1&&bundle)void openBundle(bundle);else{setLibraryStart('downloaded');changePreparation({...preparation,activeEnvironment:null});handleNavTab('library');}}}/>:null;
       case "question-reports": return <QuestionReportsScreen key={userId} owner={userId} onBack={()=>nav('preference')} onUpdate={id=>{setDownloadTarget({ids:[id],title:'Update material',mode:'select'});setScreen('downloads');}}/>;
       case "settings-storage": return <StorageScreen key={userId} owner={userId} onBack={()=>nav('preference')} onChange={async()=>{await refreshOfflineLibrary();await refreshArchive(userId);setSessions(await readPracticeHistory(userId));}} onUpdate={bundle=>{setDownloadTarget({ids:[bundle.id],title:bundle.title||'Update material',mode:'select'});setScreen('downloads');}}/>;
       case "customize-cbt": return customizeBundle ? (
